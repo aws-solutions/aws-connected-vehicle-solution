@@ -1,0 +1,40 @@
+{
+    "name": "vhr-dtc-service",
+    "description": "A Lambda function for the vehicle dtc microservice",
+    "main": "index.js",
+    "author": {
+        "name": "aws-solutions-builder"
+    },
+    "version": "0.0.1",
+    "private": "true",
+    "dependencies": {
+        "aws-sdk": "*",
+        "moment": "*",
+        "shortid": "*",
+        "underscore": "*",
+        "randomstring": "*"
+    },
+    "devDependencies": {
+        "chai": "*",
+        "sinon": "*",
+        "sinon-chai": "*",
+        "mocha": "*",
+        "aws-sdk-mock": "*",
+        "npm-run-all": "*",
+        "proxyquire": "*"
+    },
+    "scripts": {
+        "pretest": "npm install",
+        "test": "env VEHICLE_TRIP_TBL='triptable' DTC_TBL='dtctable' NOTIFICATION_SERVICE='notifyservice' mocha lib/*.spec.js",
+        "build-init": "rm -rf dist && rm -f archive.zip && mkdir dist && mkdir dist/lib",
+        "build:copy": "cp index.js dist/ && cp -r lib/*.js dist/lib",
+        "build:install": "cp package.json dist/ && cd dist && npm install --production",
+        "build": "npm-run-all -s build-init build:copy build:install",
+        "zip": "cd dist && zip -rq vhr-dtc-service.zip ."
+    },
+    "bundledDependencies": [
+        "moment",
+        "shortid",
+        "underscore"
+    ]
+}

@@ -1,0 +1,2244 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: (SO0036) - The AWS CloudFormation template for deployment of the AWS Connected Vehicle Cloud. Version 1.0.
+
+Mappings:
+    SourceCode:
+        General:
+            S3Bucket: "%%BUCKET_NAME%%"
+            KeyPrefix: "connected-vehicle-cloud/latest"
+
+Resources:
+
+    ConnectedVehicleUserPool:
+        Type: "AWS::Cognito::UserPool"
+        Properties:
+            UserPoolName: "connected-vehicle-user-pool"
+            AliasAttributes:
+                - "email"
+            AutoVerifiedAttributes:
+                - "email"
+            EmailVerificationMessage: "Your Connected Vehicle verification code is {####}."
+            EmailVerificationSubject: "Your Connected Vehicle verification code"
+            Policies:
+                PasswordPolicy:
+                      MinimumLength: 8
+                      RequireLowercase: True
+                      RequireNumbers: True
+                      RequireSymbols: False
+                      RequireUppercase: True
+            Schema:
+                -
+                    AttributeDataType: "String"
+                    Name: "email"
+                    Required: True
+                -
+                    AttributeDataType: "String"
+                    Name: "phone_number"
+                    Required: True
+
+    ConnectedVehicleClient:
+        Type: "AWS::Cognito::UserPoolClient"
+        Properties:
+            ClientName: "vehicle-health-report"
+            GenerateSecret: False
+            WriteAttributes:
+                - "address"
+                - "email"
+                - "phone_number"
+            ReadAttributes:
+                - "name"
+                - "family_name"
+                - "given_name"
+                - "middle_name"
+                - "nickname"
+                - "preferred_username"
+                - "profile"
+                - "picture"
+                - "website"
+                - "gender"
+                - "birthdate"
+                - "zoneinfo"
+                - "locale"
+                - "updated_at"
+                - "email"
+                - "email_verified"
+                - "address"
+                - "phone_number"
+                - "phone_number_verified"
+            RefreshTokenValidity: 1
+            UserPoolId: !Ref ConnectedVehicleUserPool
+
+
+    ConnectedVehicleIdentityPool:
+        Type: "AWS::Cognito::IdentityPool"
+        Properties:
+            IdentityPoolName: "Connected_Vehicle_Pool"
+            CognitoIdentityProviders:
+              - ClientId: !Ref ConnectedVehicleClient
+                ProviderName: !GetAtt ConnectedVehicleUserPool.ProviderName
+            AllowUnauthenticatedIdentities: true
+
+
+    ConnectedVehicleIdentityPoolRoleAttachment:
+        Type: "AWS::Cognito::IdentityPoolRoleAttachment"
+        Properties:
+            IdentityPoolId: !Sub "${ConnectedVehicleIdentityPool}"
+            Roles:
+                unauthenticated: !GetAtt ConnectedVehicleIdentityPoolUnauthRole.Arn
+                authenticated: !GetAtt ConnectedVehicleIdentityPoolAuthRole.Arn
+
+
+    ApiLambdaExecRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Principal:
+                            Service:
+                                - "apigateway.amazonaws.com"
+                        Action:
+                                - "sts:AssumeRole"
+            Path: "/"
+
+    ApiLambdaExecPolicy:
+        Type: "AWS::IAM::ManagedPolicy"
+        Properties:
+            Description: "Policy for the vehicle services api to invoke Lambda microservices."
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "lambda:InvokeFunction"
+                        Resource:
+                            - !GetAtt VehicleServiceFunction.Arn
+            Roles:
+                -
+                    Ref: "ApiLambdaExecRole"
+
+
+    ConnectedVehicleIdentityPoolAuthRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Principal:
+                            Federated:
+                                - "cognito-identity.amazonaws.com"
+                        Action:
+                                - "sts:AssumeRoleWithWebIdentity"
+                        Condition:
+                            StringEquals:
+                                "cognito-identity.amazonaws.com:aud": !Sub "${ConnectedVehicleIdentityPool}"
+                            "ForAnyValue:StringLike":
+                                "cognito-identity.amazonaws.com:amr": "authenticated"
+            Path: "/"
+
+    ConnectedVehicleIdentityPoolAuthPolicy:
+        Type: "AWS::IAM::ManagedPolicy"
+        Properties:
+            Description: "Policy for the connected vehicle identity pool authorized identities."
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "mobileanalytics:PutEvents"
+                            - "cognito-identity:*"
+                        Resource:
+                            - "*"
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "iot:Connect"
+                            - "iot:Subscribe"
+                            - "iot:Receive"
+                        Resource:
+                            - "*"
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "s3:GetObject"
+                        Resource:
+                            - "*"
+            Roles:
+                -
+                    Ref: "ConnectedVehicleIdentityPoolAuthRole"
+
+    ConnectedVehicleIdentityPoolUnauthRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Principal:
+                            Federated:
+                                - "cognito-identity.amazonaws.com"
+                        Action:
+                                - "sts:AssumeRoleWithWebIdentity"
+                        Condition:
+                            StringEquals:
+                                "cognito-identity.amazonaws.com:aud": !Sub "${ConnectedVehicleIdentityPool}"
+                            "ForAnyValue:StringLike":
+                                "cognito-identity.amazonaws.com:amr": "unauthenticated"
+            Path: "/"
+
+    ConnectedVehicleIdentityPoolUnauthPolicy:
+        Type: "AWS::IAM::ManagedPolicy"
+        Properties:
+            Description: "Policy for the connected vehicle identity pool unauthorized identities."
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "mobileanalytics:PutEvents"
+                            - "cognito-sync:*"
+                        Resource:
+                            - "*"
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "iot:Connect"
+                            - "iot:Subscribe"
+                            - "iot:Receive"
+                        Resource:
+                            - "*"
+            Roles:
+                -
+                    Ref: "ConnectedVehicleIdentityPoolUnauthRole"
+
+    TelemetricsApi:
+        Type: AWS::ApiGateway::RestApi
+        Properties:
+            Description: "AWS Connected Vehicle Cloud API"
+            Body:
+                swagger: "2.0"
+                info:
+                  title: "Vehicle Services API"
+                basePath: "/prod"
+                schemes:
+                - "https"
+                paths:
+                  "/vehicles":
+                    options:
+                      consumes:
+                      - "application/json"
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                            Access-Control-Allow-Methods:
+                              type: "string"
+                            Access-Control-Allow-Headers:
+                              type: "string"
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        requestTemplates:
+                          application/json: "{\"statusCode\": 200}"
+                        passthroughBehavior: "when_no_match"
+                        type: "mock"
+                    get:
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                      security:
+                      - vehicle-services-authorizer: []
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                        uri:
+                            Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VehicleServiceFunction.Arn}/invocations"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+                        credentials: !GetAtt ApiLambdaExecRole.Arn
+                    post:
+                      x-amazon-apigateway-request-validator: "body-only"
+                      parameters:
+                        - name: NewVehicle
+                          in: body
+                          description: Vehicle to register.
+                          required: true
+                          schema:
+                            $ref: '#/definitions/NewVehicle'
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                      security:
+                      - vehicle-services-authorizer: []
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                        uri:
+                            Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VehicleServiceFunction.Arn}/invocations"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+                        credentials: !GetAtt ApiLambdaExecRole.Arn
+                  "/vehicles/{vin}":
+                    options:
+                      consumes:
+                      - "application/json"
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                            Access-Control-Allow-Methods:
+                              type: "string"
+                            Access-Control-Allow-Headers:
+                              type: "string"
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        requestTemplates:
+                          application/json: "{\"statusCode\": 200}"
+                        passthroughBehavior: "when_no_match"
+                        type: "mock"
+                    get:
+                      produces:
+                      - "application/json"
+                      parameters:
+                        - name: vin
+                          in: path
+                          description: Vehicle Identification Number to filter anomalies.
+                          required: true
+                          type: string
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Vehicle"
+                      security:
+                      - vehicle-services-authorizer: []
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                        uri:
+                            Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VehicleServiceFunction.Arn}/invocations"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+                        credentials: !GetAtt ApiLambdaExecRole.Arn
+                  "/vehicles/{vin}/dtc":
+                    options:
+                      consumes:
+                      - "application/json"
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                            Access-Control-Allow-Methods:
+                              type: "string"
+                            Access-Control-Allow-Headers:
+                              type: "string"
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        requestTemplates:
+                          application/json: "{\"statusCode\": 200}"
+                        passthroughBehavior: "when_no_match"
+                        type: "mock"
+                    get:
+                      produces:
+                      - "application/json"
+                      parameters:
+                        - name: vin
+                          in: path
+                          description: Vehicle Identification Number to filter dtc.
+                          required: true
+                          type: string
+                      responses:
+                        "200":
+                          description: Successful operation
+                          schema:
+                            type: array
+                            items:
+                              $ref: "#/definitions/DiagnosticTroubleCode"
+                      security:
+                      - vehicle-services-authorizer: []
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                        uri:
+                            Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VehicleServiceFunction.Arn}/invocations"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+                        credentials: !GetAtt ApiLambdaExecRole.Arn
+                  "/vehicles/{vin}/dtc/{dtc_id}":
+                    options:
+                      consumes:
+                      - "application/json"
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                            Access-Control-Allow-Methods:
+                              type: "string"
+                            Access-Control-Allow-Headers:
+                              type: "string"
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        requestTemplates:
+                          application/json: "{\"statusCode\": 200}"
+                        passthroughBehavior: "when_no_match"
+                        type: "mock"
+                    get:
+                      produces:
+                      - "application/json"
+                      parameters:
+                        - name: vin
+                          in: path
+                          description: Vehicle Identification Number to filter dtc.
+                          required: true
+                          type: string
+                        - name: dtc_id
+                          in: path
+                          description: Unique identifier of the dtc record to return.
+                          required: true
+                          type: string
+                      responses:
+                        "200":
+                          description: Successful operation
+                          schema:
+                            $ref: "#/definitions/DiagnosticTroubleCode"
+                      security:
+                      - vehicle-services-authorizer: []
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                        uri:
+                            Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VehicleServiceFunction.Arn}/invocations"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+                        credentials: !GetAtt ApiLambdaExecRole.Arn
+                  "/vehicles/{vin}/dtc/{dtc_id}/acknowledge":
+                    options:
+                      consumes:
+                      - "application/json"
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                            Access-Control-Allow-Methods:
+                              type: "string"
+                            Access-Control-Allow-Headers:
+                              type: "string"
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        requestTemplates:
+                          application/json: "{\"statusCode\": 200}"
+                        passthroughBehavior: "when_no_match"
+                        type: "mock"
+                    put:
+                      produces:
+                      - "application/json"
+                      parameters:
+                        - name: vin
+                          in: path
+                          description: Vehicle Identification Number to filter dtc.
+                          required: true
+                          type: string
+                        - name: dtc_id
+                          in: path
+                          description: Unique identifier of the dtc record to return.
+                          required: true
+                          type: string
+                      responses:
+                        "200":
+                          description: Successful operation
+                          schema:
+                            $ref: "#/definitions/DiagnosticTroubleCode"
+                      security:
+                      - vehicle-services-authorizer: []
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                        uri:
+                            Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VehicleServiceFunction.Arn}/invocations"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+                        credentials: !GetAtt ApiLambdaExecRole.Arn
+                  "/vehicles/{vin}/trips":
+                    options:
+                      consumes:
+                      - "application/json"
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                            Access-Control-Allow-Methods:
+                              type: "string"
+                            Access-Control-Allow-Headers:
+                              type: "string"
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        requestTemplates:
+                          application/json: "{\"statusCode\": 200}"
+                        passthroughBehavior: "when_no_match"
+                        type: "mock"
+                    get:
+                      produces:
+                      - "application/json"
+                      parameters:
+                        - name: vin
+                          in: path
+                          description: Vehicle Identification Number to filter trips.
+                          required: true
+                          type: string
+                      responses:
+                        "200":
+                          description: Successful operation
+                          schema:
+                            type: array
+                            items:
+                              $ref: "#/definitions/Trip"
+                      security:
+                      - vehicle-services-authorizer: []
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                        uri:
+                            Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VehicleServiceFunction.Arn}/invocations"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+                        credentials: !GetAtt ApiLambdaExecRole.Arn
+                  "/vehicles/{vin}/trips/{trip_id}":
+                    options:
+                      consumes:
+                      - "application/json"
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                            Access-Control-Allow-Methods:
+                              type: "string"
+                            Access-Control-Allow-Headers:
+                              type: "string"
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        requestTemplates:
+                          application/json: "{\"statusCode\": 200}"
+                        passthroughBehavior: "when_no_match"
+                        type: "mock"
+                    get:
+                      produces:
+                      - "application/json"
+                      parameters:
+                        - name: vin
+                          in: path
+                          description: Vehicle Identification Number to filter anomalies.
+                          required: true
+                          type: string
+                        - name: trip_id
+                          in: path
+                          description: Unique identifier of the trip record to return.
+                          required: true
+                          type: string
+                      responses:
+                        "200":
+                          description: Successful operation
+                          schema:
+                            $ref: "#/definitions/Trip"
+                      security:
+                      - vehicle-services-authorizer: []
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                        uri:
+                            Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VehicleServiceFunction.Arn}/invocations"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+                        credentials: !GetAtt ApiLambdaExecRole.Arn
+                  "/vehicles/{vin}/anomalies":
+                    options:
+                      consumes:
+                      - "application/json"
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                            Access-Control-Allow-Methods:
+                              type: "string"
+                            Access-Control-Allow-Headers:
+                              type: "string"
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        requestTemplates:
+                          application/json: "{\"statusCode\": 200}"
+                        passthroughBehavior: "when_no_match"
+                        type: "mock"
+                    get:
+                      produces:
+                      - "application/json"
+                      parameters:
+                        - name: vin
+                          in: path
+                          description: Vehicle Identification Number to filter anomalies.
+                          required: true
+                          type: string
+                      responses:
+                        "200":
+                          description: Successful operation
+                          schema:
+                            type: array
+                            items:
+                              $ref: "#/definitions/Anomaly"
+                      security:
+                      - vehicle-services-authorizer: []
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                        uri:
+                            Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VehicleServiceFunction.Arn}/invocations"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+                        credentials: !GetAtt ApiLambdaExecRole.Arn
+                  "/vehicles/{vin}/anomalies/{anomaly_id}":
+                    options:
+                      consumes:
+                      - "application/json"
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                            Access-Control-Allow-Methods:
+                              type: "string"
+                            Access-Control-Allow-Headers:
+                              type: "string"
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        requestTemplates:
+                          application/json: "{\"statusCode\": 200}"
+                        passthroughBehavior: "when_no_match"
+                        type: "mock"
+                    get:
+                      produces:
+                      - "application/json"
+                      parameters:
+                        - name: vin
+                          in: path
+                          description: Vehicle Identification Number to filter dtc.
+                          required: true
+                          type: string
+                        - name: anomaly_id
+                          in: path
+                          description: Unique identifier of the anomaly record to return.
+                          required: true
+                          type: string
+                      responses:
+                        "200":
+                          description: Successful operation
+                          schema:
+                            $ref: "#/definitions/Anomaly"
+                      security:
+                      - vehicle-services-authorizer: []
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                        uri:
+                            Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VehicleServiceFunction.Arn}/invocations"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+                        credentials: !GetAtt ApiLambdaExecRole.Arn
+                  "/vehicles/{vin}/anomalies/{anomaly_id}/acknowledge":
+                    options:
+                      consumes:
+                      - "application/json"
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                            Access-Control-Allow-Methods:
+                              type: "string"
+                            Access-Control-Allow-Headers:
+                              type: "string"
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        requestTemplates:
+                          application/json: "{\"statusCode\": 200}"
+                        passthroughBehavior: "when_no_match"
+                        type: "mock"
+                    put:
+                      produces:
+                      - "application/json"
+                      parameters:
+                        - name: vin
+                          in: path
+                          description: Vehicle Identification Number to filter dtc.
+                          required: true
+                          type: string
+                        - name: anomaly_id
+                          in: path
+                          description: Unique identifier of the anomaly record to return.
+                          required: true
+                          type: string
+                      responses:
+                        "200":
+                          description: Successful operation
+                          schema:
+                            $ref: "#/definitions/Anomaly"
+                      security:
+                      - vehicle-services-authorizer: []
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                        uri:
+                            Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VehicleServiceFunction.Arn}/invocations"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+                        credentials: !GetAtt ApiLambdaExecRole.Arn
+                  "/vehicles/{vin}/healthreports":
+                    options:
+                      consumes:
+                      - "application/json"
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                            Access-Control-Allow-Methods:
+                              type: "string"
+                            Access-Control-Allow-Headers:
+                              type: "string"
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        requestTemplates:
+                          application/json: "{\"statusCode\": 200}"
+                        passthroughBehavior: "when_no_match"
+                        type: "mock"
+                    get:
+                      produces:
+                      - "application/json"
+                      parameters:
+                        - name: vin
+                          in: path
+                          description: Vehicle Identification Number to filter trips.
+                          required: true
+                          type: string
+                      responses:
+                        "200":
+                          description: Successful operation
+                          schema:
+                            type: array
+                            items:
+                              $ref: "#/definitions/HealthReport"
+                      security:
+                      - vehicle-services-authorizer: []
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                        uri:
+                            Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VehicleServiceFunction.Arn}/invocations"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+                        credentials: !GetAtt ApiLambdaExecRole.Arn
+                  "/vehicles/{vin}/healthreports/{report_id}":
+                    options:
+                      consumes:
+                      - "application/json"
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                            Access-Control-Allow-Methods:
+                              type: "string"
+                            Access-Control-Allow-Headers:
+                              type: "string"
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        requestTemplates:
+                          application/json: "{\"statusCode\": 200}"
+                        passthroughBehavior: "when_no_match"
+                        type: "mock"
+                    get:
+                      produces:
+                      - "application/json"
+                      parameters:
+                        - name: vin
+                          in: path
+                          description: Vehicle Identification Number to filter anomalies.
+                          required: true
+                          type: string
+                        - name: report_id
+                          in: path
+                          description: Unique identifier of the health report record to return.
+                          required: true
+                          type: string
+                      responses:
+                        "200":
+                          description: Successful operation
+                          schema:
+                            $ref: "#/definitions/HealthReport"
+                      security:
+                      - vehicle-services-authorizer: []
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                        uri:
+                            Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VehicleServiceFunction.Arn}/invocations"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+                        credentials: !GetAtt ApiLambdaExecRole.Arn
+                securityDefinitions:
+                  vehicle-services-authorizer:
+                    type: "apiKey"
+                    name: "Authorization"
+                    in: "header"
+                    x-amazon-apigateway-authtype: "cognito_user_pools"
+                    x-amazon-apigateway-authorizer:
+                      providerARNs:
+                      - !GetAtt ConnectedVehicleUserPool.Arn
+                      type: "cognito_user_pools"
+                definitions:
+                  Empty:
+                    type: "object"
+                    title: "Empty Schema"
+                  ResolutionStep:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        description: The identifier of the resolution step
+                      detail:
+                        type: string
+                        description: The details for the resolution step
+                  NewVehicle:
+                    type: "object"
+                    "$schema": "http://json-schema.org/draft-04/schema#"
+                    title: "Schema for a new vehicle"
+                    required:
+                      - vin
+                    properties:
+                      vin:
+                        type: string
+                        description: Vehicle Identification Number for the vehicle
+                      nickname:
+                        type: string
+                        description: Nickname for vehicle by owner
+                  Vehicle:
+                    type: "object"
+                    properties:
+                      vin:
+                        type: string
+                        description: Vehicle Identification Number for the vehicle
+                      owner_id:
+                          type: string
+                          description: Unique user id for the vehicle owner
+                      nickname:
+                        type: string
+                        description: Nickname for vehicle by owner
+                      odometer:
+                        type: number
+                        format: float
+                        description: Odometer reading for the vehicle
+                  Anomaly:
+                    type: object
+                    properties:
+                      anomaly_id:
+                        type: string
+                        description: The unique identifier of the anomaly
+                      vin:
+                        type: string
+                        description: Vehicle Identification Number for the vehicle
+                      telemetric:
+                        type: string
+                        description: The telemetric where the anomaly occured
+                      value:
+                        type: number
+                        format: float
+                        description: The telemetric value when the anomaly occured
+                      anomaly_score:
+                        type: number
+                        format: double
+                        description: The telemetric where the anomaly occured
+                      acknowledged:
+                        type: string
+                        description: Flag indicating if the anomaly is acknowledged
+                      description:
+                        type: string
+                        description: Description of the identified anomaly
+                      identified_at:
+                        type: string
+                        description: The datetime the anomaly was identified.
+                      measured_at:
+                        type: string
+                        description: The measurement datetime of the anomaly.
+                      created_at:
+                        type: string
+                        description: The creation datetime of the anomaly.
+                  DiagnosticTroubleCode:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        description: The unique identifier of the dtc
+                      vin:
+                        type: string
+                        description: Vehicle Identification Number for the vehicle
+                      dtc:
+                        type: string
+                        description: The diagnostic trouble code identifier triggered
+                      description:
+                        type: string
+                        description: Description of the triggered dtc
+                      steps:
+                        type: array
+                        items:
+                          $ref: '#/definitions/ResolutionStep'
+                      acknowledged:
+                        type: string
+                        description: Flag indicating if the anomaly is acknowledged
+                      triggered_at:
+                        type: string
+                        description: The measurement datetime of the anomaly.
+                      created_at:
+                        type: string
+                        description: The creation datetime of the anomaly.
+                  Trip:
+                    type: object
+                    properties:
+                      trip_id:
+                        type: string
+                        description: Unique identification for the trip
+                      vin:
+                        type: string
+                        description: Vehicle Identification Number for the vehicle
+                      owner:
+                        type: string
+                        description: Unique user id for the vehicle owner
+                      vehicle_speed_mean:
+                        type: number
+                        format: float
+                        description: Mean vehicle speed for trip
+                      engine_speed_mean:
+                        type: number
+                        format: float
+                        description: Mean engine speed for trip
+                      torque_at_transmission_mean:
+                        type: number
+                        format: float
+                        description: Mean transmision torque for trip
+                      oil_temp_mean:
+                        type: number
+                        format: float
+                        description: Mean oil temperature for trip
+                      accelerator_pedal_position_mean:
+                        type: number
+                        format: float
+                        description: Mean accelerator position for trip
+                      brake_mean:
+                        type: number
+                        format: float
+                        description: Mean brake position for trip
+                      odometer:
+                        type: number
+                        format: float
+                        description: Odometer reading for trip
+                      fuel_consumed_since_restart:
+                        type: number
+                        format: float
+                        description: Fuel consumed during trip
+                      fuel_level:
+                        type: number
+                        format: float
+                        description: Fuel level after trip
+                      start_latitude:
+                        type: number
+                        format: float
+                        description: Latitude at the beginning of the trip
+                      start_longitude:
+                        type: number
+                        format: float
+                        description: Longitude at the beginning of the trip
+                      stop_latitude:
+                        type: number
+                        format: float
+                        description: Latitude at the end of the trip
+                      stop_longitude:
+                        type: number
+                        format: float
+                        description: Longitude at the end of the trip
+                      start_time:
+                        type: string
+                        description: The start time of the trip.
+                      end_time:
+                        type: string
+                        description: The end time of the trip.
+                      driver_safety_score:
+                        type: number
+                        format: float
+                        description: Driver score for the trip
+                  HealthReport:
+                    type: object
+                    properties:
+                      report_id:
+                        type: string
+                        description: Unique identification for the health report
+                      vin:
+                        type: string
+                        description: Vehicle Identification Number for the vehicle
+                      owner:
+                        type: string
+                        description: Unique user id for the vehicle owner
+
+    TelemetricsApiDeployment:
+        Type: "AWS::ApiGateway::Deployment"
+        Properties:
+            RestApiId: !Ref TelemetricsApi
+            Description: "Production"
+            StageName: "prod"
+
+    TelemetricsRawStorageRule:
+        Type: "AWS::IoT::TopicRule"
+        Properties:
+            RuleName: "ConnectedVehicleTelematicsStorage"
+            TopicRulePayload:
+                RuleDisabled: "false"
+                Description: "Persistent storage of connected vehicle telematics data."
+                Sql: >-
+                    SELECT * FROM 'connectedcar/telemetry/#'
+                Actions:
+                    -
+                        Firehose:
+                            DeliveryStreamName: !Ref TelemetricsDeliveryStream
+                            RoleArn: !GetAtt TelemetricsIotActionsRole.Arn
+                            Separator: "\n"
+
+    TelemetricsDtcRule:
+        Type: "AWS::IoT::TopicRule"
+        Properties:
+            RuleName: "ConnectedVehicleTelematicsDtc"
+            TopicRulePayload:
+                RuleDisabled: "false"
+                Description: "Processing of DTC messages from the AWS Connected Vehicle Cloud."
+                Sql: >-
+                    SELECT * FROM 'connectedcar/dtc/#'
+                Actions:
+                    -
+                        Lambda:
+                            FunctionArn: !GetAtt DtcServiceFunction.Arn
+
+    LambdaInvokeDtcServicePermission:
+        Type: "AWS::Lambda::Permission"
+        Properties:
+            FunctionName: !GetAtt DtcServiceFunction.Arn
+            Action: "lambda:InvokeFunction"
+            Principal: "iot.amazonaws.com"
+            SourceArn: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:rule/${TelemetricsDtcRule}"
+            SourceAccount: !Sub "${AWS::AccountId}"
+
+    TelemetricsJitrRule:
+        Type: "AWS::IoT::TopicRule"
+        Properties:
+            RuleName: "ConnectedVehicleJITR"
+            TopicRulePayload:
+                RuleDisabled: "false"
+                Description: "Just in time registration (JITR) for AWS Connected Vehicle Cloud."
+                Sql: >-
+                    SELECT * FROM '$aws/events/certificates/registered/certid'
+                Actions:
+                    -
+                        Lambda:
+                            FunctionArn: !GetAtt JitrServiceFunction.Arn
+
+    LambdaInvokeJitrServicePermission:
+        Type: "AWS::Lambda::Permission"
+        Properties:
+            FunctionName: !GetAtt JitrServiceFunction.Arn
+            Action: "lambda:InvokeFunction"
+            Principal: "iot.amazonaws.com"
+            SourceArn: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:rule/${TelemetricsJitrRule}"
+            SourceAccount: !Sub "${AWS::AccountId}"
+
+    TelemetricsDriverScoreRule:
+        Type: "AWS::IoT::TopicRule"
+        Properties:
+            RuleName: "ConnectedVehicleDriverScore"
+            TopicRulePayload:
+                RuleDisabled: "false"
+                Description: "Processing connected vehicle driver score."
+                Sql: >-
+                    SELECT * FROM 'connectedcar/trip/#' WHERE ignition_status = 'off'
+                Actions:
+                    -
+                        Lambda:
+                            FunctionArn: !GetAtt DriverSafetyServiceFunction.Arn
+
+    LambdaInvokeDriverScorePermission:
+        Type: "AWS::Lambda::Permission"
+        Properties:
+            FunctionName: !GetAtt DriverSafetyServiceFunction.Arn
+            Action: "lambda:InvokeFunction"
+            Principal: "iot.amazonaws.com"
+            SourceArn: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:rule/${TelemetricsDriverScoreRule}"
+            SourceAccount: !Sub "${AWS::AccountId}"
+
+    TelemetricsAggregationRule:
+        Type: "Custom::LoadLambda"
+        Properties:
+            ServiceToken:
+                Fn::GetAtt:
+                    - "ConnectedVehicleHelper"
+                    - "Arn"
+            Region:
+                - Ref: "AWS::Region"
+            name: "ConnectedVehicleTrip"
+            tableName: !Ref VehicleTripTable
+            roleArn: !GetAtt TelemetricsIotActionsRole.Arn
+            sql: "SELECT * FROM 'connectedcar/trip/#'"
+            description: "Processing connected vehicle aggregated trip telematics."
+            customAction: "dynamoDBv2IotRule"
+
+    TelemetricsIotActionsRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Principal:
+                            Service:
+                                - "iot.amazonaws.com"
+                        Action:
+                                - "sts:AssumeRole"
+            Path: "/"
+
+    TelemetricsIotActionsPolicy:
+        Type: "AWS::IAM::ManagedPolicy"
+        Properties:
+            Description: "Policy for the iot actions in the connected vehicle telemetrics platform."
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "firehose:PutRecord"
+                        Resource:
+                            - Fn::Sub: "arn:aws:firehose:${AWS::Region}:${AWS::AccountId}:deliverystream/${TelemetricsDeliveryStream}"
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "dynamodb:PutItem"
+                        Resource:
+                            - Fn::Sub: "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${VehicleTripTable}"
+
+            Roles:
+                -
+                    Ref: "TelemetricsIotActionsRole"
+
+    TelemetricDataBucket:
+        Type: AWS::S3::Bucket
+        DeletionPolicy: Retain
+        Properties:
+            BucketName: !Join ["", ["connected-vehicle-data-", Ref: "AWS::Region", "-", Ref: "AWS::AccountId"]]
+
+    TelemetricTripDataBucket:
+        Type: AWS::S3::Bucket
+        DeletionPolicy: Retain
+        Properties:
+            BucketName: !Join ["", ["connected-vehicle-trip-", Ref: "AWS::Region", "-", Ref: "AWS::AccountId"]]
+            CorsConfiguration:
+                CorsRules:
+                -
+                    AllowedOrigins:
+                        - "*"
+                    AllowedMethods:
+                        - "HEAD"
+                        - "GET"
+                    AllowedHeaders:
+                        - "*"
+
+    JitrServiceFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+          Description: "AWS Connected Vehicle Cloud Just-In-Time-Registration microservice"
+          Code:
+              S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+              S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-vehicle-jitr.zip"]]
+          Handler: index.handler
+          Runtime: nodejs6.10
+          Role: !GetAtt JitrServiceRole.Arn
+          Timeout: 300
+          MemorySize: 256
+
+    AnomalyServiceFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+          Description: "AWS Connected Vehicle Cloud anomaly detection microservice"
+          Code:
+              S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+              S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-anomaly-service.zip"]]
+          Handler: index.handler
+          Runtime: nodejs6.10
+          Role: !GetAtt AnomalyServiceRole.Arn
+          Timeout: 300
+          MemorySize: 256
+          Environment:
+              Variables:
+                  VEHICLE_ANOMALY_TBL: !Ref VehicleAnomalyTable
+                  NOTIFICATION_SERVICE: !Ref NotificationServiceFunction
+
+    AnomalyServiceEventSource:
+        DependsOn: AnomalyServiceFunction
+        Type: "AWS::Lambda::EventSourceMapping"
+        Properties:
+            BatchSize: 1
+            Enabled: true
+            EventSourceArn: !Join ["", ["arn:aws:kinesis:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":stream/cc-anomaly-stream"]]
+            FunctionName: !GetAtt AnomalyServiceFunction.Arn
+            StartingPosition: TRIM_HORIZON
+
+    DtcServiceFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+          Description: "AWS Connected Vehicle Cloud diagnostic trouble code humanization and alerting microservice"
+          Code:
+              S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+              S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-dtc-service.zip"]]
+          Handler: index.handler
+          Runtime: nodejs6.10
+          Role: !GetAtt DtcServiceRole.Arn
+          Timeout: 300
+          MemorySize: 256
+          Environment:
+              Variables:
+                  VEHICLE_DTC_TBL: !Ref VehicleDtcTable
+                  DTC_TBL: !Ref DtcTable
+                  NOTIFICATION_SERVICE: !Ref NotificationServiceFunction
+
+    NotificationServiceFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+          Description: "AWS Connected Vehicle Cloud SNS and MQTT notification microservice"
+          Code:
+              S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+              S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-notification-service.zip"]]
+          Handler: index.handler
+          Runtime: nodejs6.10
+          Role: !GetAtt NotificationServiceRole.Arn
+          Timeout: 300
+          MemorySize: 256
+          Environment:
+              Variables:
+                  VEHICLE_OWNER_TBL: !Ref VehicleOwnerTable
+                  USER_POOL_ID: !Ref ConnectedVehicleUserPool
+
+    DriverSafetyServiceFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+          Description: "AWS Connected Vehicle Cloud driver score processing and alerting microservice"
+          Code:
+              S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+              S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-driver-safety-service.zip"]]
+          Handler: index.handler
+          Runtime: nodejs6.10
+          Role: !GetAtt DriverSafetyServiceRole.Arn
+          Timeout: 300
+          MemorySize: 256
+          Environment:
+              Variables:
+                  VEHICLE_TRIP_TBL: !Ref VehicleTripTable
+                  NOTIFICATION_SERVICE: !Ref NotificationServiceFunction
+
+    VehicleServiceFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+          Description: "AWS Connected Vehicle Cloud vehicle interface microservice for API"
+          Code:
+              S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+              S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-vehicle-service.zip"]]
+          Handler: index.handler
+          Runtime: nodejs6.10
+          Role: !GetAtt VehicleServiceRole.Arn
+          Timeout: 300
+          MemorySize: 256
+          Environment:
+              Variables:
+                  VEHICLE_OWNER_TBL: !Ref VehicleOwnerTable
+                  VEHICLE_TRIP_TBL: !Ref VehicleTripTable
+                  VEHICLE_DTC_TBL: !Ref VehicleDtcTable
+                  HEALTH_REPORT_TBL: !Ref HealthReportTable
+                  VEHICLE_ANOMALY_TBL: !Ref VehicleAnomalyTable
+
+    AnomalyStream:
+        Type: AWS::Kinesis::Stream
+        Properties:
+            Name: cc-anomaly-stream
+            ShardCount: 2
+
+    TelemetricsDeliveryStream:
+        Type: AWS::KinesisFirehose::DeliveryStream
+        Properties:
+            DeliveryStreamName: "connected-vehicle-telemetry"
+            S3DestinationConfiguration:
+                BucketARN: !GetAtt TelemetricDataBucket.Arn
+                BufferingHints:
+                    IntervalInSeconds: 300
+                    SizeInMBs: 5
+                CloudWatchLoggingOptions:
+                    Enabled: true
+                    LogGroupName: "/aws/kinesisfirehose/connected-vehicle-telemetry"
+                    LogStreamName: "telemetricsDelivery"
+                CompressionFormat: "GZIP"
+                Prefix: "telemetry/"
+                RoleARN: !GetAtt TelemetricsDeliveryStreamRole.Arn
+
+    TelemetricsAnomalyAnalyticsApplication:
+        Type: "Custom::LoadLambda"
+        Properties:
+            ServiceToken:
+                Fn::GetAtt:
+                    - "ConnectedVehicleHelper"
+                    - "Arn"
+            Region:
+                - Ref: "AWS::Region"
+            name: "ConnectedVehicleAnomalyDetectionApp"
+            anomalyStream: !GetAtt AnomalyStream.Arn
+            deliveryStream: !Sub "arn:aws:firehose:${AWS::Region}:${AWS::AccountId}:deliverystream/${TelemetricsDeliveryStream}"
+            roleArn: !GetAtt TelemetricsAnomalyAnalyticsRole.Arn
+            customAction: "kinesisApplication"
+
+    TelemetricsDeliveryStreamRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Principal:
+                            Service:
+                                - "firehose.amazonaws.com"
+                        Action:
+                                - "sts:AssumeRole"
+            Path: "/"
+
+    TelemetricsDeliveryStreamPolicy:
+        Type: "AWS::IAM::ManagedPolicy"
+        Properties:
+            Description: "Policy for the telemetrics firehose delivery stream."
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "s3:AbortMultipartUpload"
+                            - "s3:GetBucketLocation"
+                            - "s3:GetObject"
+                            - "s3:ListBucket"
+                            - "s3:ListBucketMultipartUploads"
+                            - "s3:PutObject"
+                        Resource:
+                            - Fn::Sub: "arn:aws:s3:::${TelemetricDataBucket}"
+                            - Fn::Sub: "arn:aws:s3:::${TelemetricDataBucket}/*"
+                            - "arn:aws:s3:::%FIREHOSE_BUCKET_NAME%"
+                            - "arn:aws:s3:::%FIREHOSE_BUCKET_NAME%/*"
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "lambda:InvokeFunction"
+                            - "lambda:GetFunctionConfiguration"
+                        Resource:
+                            - Fn::Sub: "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:%FIREHOSE_DEFAULT_FUNCTION%:%FIREHOSE_DEFAULT_VERSION%"
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "logs:PutLogEvents"
+                        Resource:
+                            - Fn::Sub: "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/kinesisfirehose/connected-vehicle-telemetry:log-stream:*"
+            Roles:
+                -
+                    Ref: "TelemetricsDeliveryStreamRole"
+
+    TelemetricsAnomalyAnalyticsRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Principal:
+                            Service:
+                                - "kinesisanalytics.amazonaws.com"
+                        Action:
+                                - "sts:AssumeRole"
+            Path: "/"
+            Policies:
+                -
+                    PolicyName: "TelemetricsAnomalyAnalyticsPolicy"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "firehose:DescribeDeliveryStream"
+                                    - "firehose:Get*"
+                                Resource:
+                                    - Fn::Sub: "arn:aws:firehose:${AWS::Region}:${AWS::AccountId}:deliverystream/${TelemetricsDeliveryStream}"
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "kinesis:DescribeStream"
+                                    - "kinesis:PutRecord"
+                                    - "kinesis:PutRecords"
+                                Resource:
+                                    - Fn::Sub: "arn:aws:kinesis:${AWS::Region}:${AWS::AccountId}:stream/${AnomalyStream}"
+
+    JitrServiceRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Principal:
+                            Service:
+                                - "lambda.amazonaws.com"
+                        Action:
+                                - "sts:AssumeRole"
+            Path: "/"
+
+    JitrServicePolicy:
+        Type: "AWS::IAM::ManagedPolicy"
+        Properties:
+            Description: "Policy for the vehicle just-in-time-registration microservice Lambda function."
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "logs:CreateLogGroup"
+                            - "logs:CreateLogStream"
+                            - "logs:PutLogEvents"
+                        Resource:
+                            !Join ["", ["arn:aws:logs:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":log-group:/aws/lambda/", !Ref JitrServiceFunction,":*"]]
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "iot:UpdateCertificate"
+                            - "iot:CreatePolicy"
+                            - "iot:AttachPrincipalPolicy"
+                        Resource:
+                            - "*"
+            Roles:
+                -
+                    Ref: "JitrServiceRole"
+
+    AnomalyServiceRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Principal:
+                            Service:
+                                - "lambda.amazonaws.com"
+                        Action:
+                                - "sts:AssumeRole"
+            Path: "/"
+            Policies:
+                -
+                    PolicyName: "AnomalyServicePolicy"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource:
+                                    - !Join ["", ["arn:aws:logs:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":log-group:/aws/lambda/*"]]
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:BatchGetItem"
+                                    - "dynamodb:BatchWriteItem"
+                                    - "dynamodb:DeleteItem"
+                                    - "dynamodb:GetItem"
+                                    - "dynamodb:PutItem"
+                                    - "dynamodb:Query"
+                                    - "dynamodb:Scan"
+                                    - "dynamodb:UpdateItem"
+                                Resource:
+                                    - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: VehicleAnomalyTable]]
+                                    - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: VehicleAnomalyTable, "/index/vin-trip_id-index"]]
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "kinesis:DescribeStream"
+                                    - "kinesis:GetRecords"
+                                    - "kinesis:GetShardIterator"
+                                    - "kinesis:ListStreams"
+                                Resource:
+                                    - !Join ["", ["arn:aws:kinesis:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":stream/cc-anomaly-stream"]]
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "lambda:InvokeFunction"
+                                Resource:
+                                    -
+                                        Fn::GetAtt:
+                                            - "NotificationServiceFunction"
+                                            - "Arn"
+
+    DtcServiceRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Principal:
+                            Service:
+                                - "lambda.amazonaws.com"
+                        Action:
+                                - "sts:AssumeRole"
+            Path: "/"
+
+    DtcServicePolicy:
+        Type: "AWS::IAM::ManagedPolicy"
+        Properties:
+            Description: "Policy for the DTC microservice Lambda function."
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "logs:CreateLogGroup"
+                            - "logs:CreateLogStream"
+                            - "logs:PutLogEvents"
+                        Resource:
+                            !Join ["", ["arn:aws:logs:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":log-group:/aws/lambda/", !Ref DtcServiceFunction,":*"]]
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "dynamodb:BatchGetItem"
+                            - "dynamodb:BatchWriteItem"
+                            - "dynamodb:DeleteItem"
+                            - "dynamodb:GetItem"
+                            - "dynamodb:PutItem"
+                            - "dynamodb:Query"
+                            - "dynamodb:Scan"
+                            - "dynamodb:UpdateItem"
+                        Resource:
+                            - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: VehicleDtcTable]]
+                            - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: DtcTable]]
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "lambda:InvokeFunction"
+                        Resource:
+                            -
+                                Fn::GetAtt:
+                                    - "NotificationServiceFunction"
+                                    - "Arn"
+            Roles:
+                -
+                    Ref: "DtcServiceRole"
+
+    NotificationServiceRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Principal:
+                            Service:
+                                - "lambda.amazonaws.com"
+                        Action:
+                                - "sts:AssumeRole"
+            Path: "/"
+
+    NotificationServicePolicy:
+        Type: "AWS::IAM::ManagedPolicy"
+        Properties:
+            Description: "Policy for the notification microservice Lambda function."
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "logs:CreateLogGroup"
+                            - "logs:CreateLogStream"
+                            - "logs:PutLogEvents"
+                        Resource:
+                            !Join ["", ["arn:aws:logs:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":log-group:/aws/lambda/", !Ref NotificationServiceFunction,":*"]]
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "dynamodb:BatchGetItem"
+                            - "dynamodb:BatchWriteItem"
+                            - "dynamodb:DeleteItem"
+                            - "dynamodb:GetItem"
+                            - "dynamodb:PutItem"
+                            - "dynamodb:Query"
+                            - "dynamodb:Scan"
+                            - "dynamodb:UpdateItem"
+                        Resource:
+                            - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: VehicleOwnerTable]]
+                            - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: VehicleOwnerTable, "/index/vin-index"]]
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "cognito-idp:adminGetUser"
+                        Resource:
+                            - !Join ["", ["arn:aws:cognito-idp:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":userpool/", !Ref ConnectedVehicleUserPool]]
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "sns:Publish"
+                        Resource:
+                            - "*"
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "iot:DescribeEndpoint"
+                        Resource:
+                            - "*"
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "iot:publish"
+                        Resource:
+                            - !Join ["", ["arn:aws:iot:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":topic/connectedcar/alert/*"]]
+            Roles:
+                -
+                    Ref: "NotificationServiceRole"
+
+    VehicleServiceRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Principal:
+                            Service:
+                                - "lambda.amazonaws.com"
+                        Action:
+                                - "sts:AssumeRole"
+            Path: "/"
+
+    VehicleServicePolicy:
+        Type: "AWS::IAM::ManagedPolicy"
+        Properties:
+            Description: "Policy for the vehicle microservice Lambda function."
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "logs:CreateLogGroup"
+                            - "logs:CreateLogStream"
+                            - "logs:PutLogEvents"
+                        Resource:
+                            !Join ["", ["arn:aws:logs:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":log-group:/aws/lambda/", !Ref VehicleServiceFunction,":*"]]
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "dynamodb:BatchGetItem"
+                            - "dynamodb:BatchWriteItem"
+                            - "dynamodb:DeleteItem"
+                            - "dynamodb:GetItem"
+                            - "dynamodb:PutItem"
+                            - "dynamodb:Query"
+                            - "dynamodb:Scan"
+                            - "dynamodb:UpdateItem"
+                        Resource:
+                            - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: VehicleTripTable]]
+                            - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: VehicleOwnerTable]]
+                            - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: VehicleDtcTable]]
+                            - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: HealthReportTable]]
+                            - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: VehicleAnomalyTable]]
+
+            Roles:
+                -
+                    Ref: "VehicleServiceRole"
+
+    DriverSafetyServiceRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Principal:
+                            Service:
+                                - "lambda.amazonaws.com"
+                        Action:
+                                - "sts:AssumeRole"
+            Path: "/"
+
+    DriverSafetyServicePolicy:
+        Type: "AWS::IAM::ManagedPolicy"
+        Properties:
+            Description: "Policy for the driver safety microservice Lambda function."
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "logs:CreateLogGroup"
+                            - "logs:CreateLogStream"
+                            - "logs:PutLogEvents"
+                        Resource:
+                            !Join ["", ["arn:aws:logs:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":log-group:/aws/lambda/", !Ref DriverSafetyServiceFunction,":*"]]
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "dynamodb:BatchGetItem"
+                            - "dynamodb:BatchWriteItem"
+                            - "dynamodb:DeleteItem"
+                            - "dynamodb:GetItem"
+                            - "dynamodb:PutItem"
+                            - "dynamodb:Query"
+                            - "dynamodb:Scan"
+                            - "dynamodb:UpdateItem"
+                        Resource:
+                            !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: VehicleTripTable]]
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "lambda:InvokeFunction"
+                        Resource:
+                            -
+                                Fn::GetAtt:
+                                    - "NotificationServiceFunction"
+                                    - "Arn"
+            Roles:
+                -
+                    Ref: "DriverSafetyServiceRole"
+
+    ConnectedVehicleDevicePolicy:
+        Type: "AWS::IAM::ManagedPolicy"
+        Properties:
+            Description: "Policy for the connected vehicle device."
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "iot:*"
+                        Resource: "*"
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "greengrass:*"
+                        Resource: "*"
+                    -
+                        Effect: "Allow"
+                        Action:
+                            - "s3:AbortMultipartUpload"
+                            - "s3:GetBucketLocation"
+                            - "s3:GetObject"
+                            - "s3:ListBucket"
+                            - "s3:ListBucketMultipartUploads"
+                            - "s3:PutObject"
+                        Resource:
+                            - Fn::Sub: "arn:aws:s3:::${TelemetricTripDataBucket}"
+                            - Fn::Sub: "arn:aws:s3:::${TelemetricTripDataBucket}/*"
+
+    VehicleDtcTable:
+        Type: "AWS::DynamoDB::Table"
+        DeletionPolicy: "Delete"
+        Properties:
+            AttributeDefinitions:
+                -
+                    AttributeName: "vin"
+                    AttributeType: "S"
+                -
+                    AttributeName: "dtc_id"
+                    AttributeType: "S"
+            KeySchema:
+                -
+                    AttributeName: "vin"
+                    KeyType: "HASH"
+                -
+                    AttributeName: "dtc_id"
+                    KeyType: "RANGE"
+            ProvisionedThroughput:
+                ReadCapacityUnits: 5
+                WriteCapacityUnits: 5
+
+    VehicleTripTable:
+        Type: "AWS::DynamoDB::Table"
+        DeletionPolicy: "Delete"
+        Properties:
+            AttributeDefinitions:
+                -
+                    AttributeName: "vin"
+                    AttributeType: "S"
+                -
+                    AttributeName: "trip_id"
+                    AttributeType: "S"
+            KeySchema:
+                -
+                    AttributeName: "vin"
+                    KeyType: "HASH"
+                -
+                    AttributeName: "trip_id"
+                    KeyType: "RANGE"
+            ProvisionedThroughput:
+                ReadCapacityUnits: 30
+                WriteCapacityUnits: 30
+
+    HealthReportTable:
+        Type: "AWS::DynamoDB::Table"
+        DeletionPolicy: "Delete"
+        Properties:
+            AttributeDefinitions:
+                -
+                    AttributeName: "vin"
+                    AttributeType: "S"
+                -
+                    AttributeName: "report_id"
+                    AttributeType: "S"
+            KeySchema:
+                -
+                    AttributeName: "vin"
+                    KeyType: "HASH"
+                -
+                    AttributeName: "report_id"
+                    KeyType: "RANGE"
+            ProvisionedThroughput:
+                ReadCapacityUnits: 2
+                WriteCapacityUnits: 2
+
+    VehicleAnomalyTable:
+        Type: "AWS::DynamoDB::Table"
+        DeletionPolicy: "Delete"
+        Properties:
+            AttributeDefinitions:
+                -
+                    AttributeName: "vin"
+                    AttributeType: "S"
+                -
+                    AttributeName: "anomaly_id"
+                    AttributeType: "S"
+                -
+                    AttributeName: "trip_id"
+                    AttributeType: "S"
+            KeySchema:
+                -
+                    AttributeName: "vin"
+                    KeyType: "HASH"
+                -
+                    AttributeName: "anomaly_id"
+                    KeyType: "RANGE"
+            GlobalSecondaryIndexes:
+                -
+                    IndexName: "vin-trip_id-index"
+                    KeySchema:
+                        - AttributeName: "vin"
+                          KeyType: "HASH"
+                        - AttributeName: "trip_id"
+                          KeyType: "RANGE"
+                    Projection:
+                        ProjectionType: "ALL"
+                    ProvisionedThroughput:
+                        ReadCapacityUnits: "30"
+                        WriteCapacityUnits: "30"
+            ProvisionedThroughput:
+                ReadCapacityUnits: 30
+                WriteCapacityUnits: 30
+
+    VehicleOwnerTable:
+        Type: "AWS::DynamoDB::Table"
+        DeletionPolicy: "Delete"
+        Properties:
+            AttributeDefinitions:
+                -
+                    AttributeName: "owner_id"
+                    AttributeType: "S"
+                -
+                    AttributeName: "vin"
+                    AttributeType: "S"
+            KeySchema:
+                -
+                    AttributeName: "owner_id"
+                    KeyType: "HASH"
+                -
+                    AttributeName: "vin"
+                    KeyType: "RANGE"
+            GlobalSecondaryIndexes:
+                -
+                    IndexName: "vin-index"
+                    KeySchema:
+                        - AttributeName: "vin"
+                          KeyType: "HASH"
+                    Projection:
+                        ProjectionType: "ALL"
+                    ProvisionedThroughput:
+                        ReadCapacityUnits: "30"
+                        WriteCapacityUnits: "30"
+            ProvisionedThroughput:
+                ReadCapacityUnits: 2
+                WriteCapacityUnits: 2
+
+    DtcTable:
+        Type: "AWS::DynamoDB::Table"
+        DeletionPolicy: "Delete"
+        Properties:
+            AttributeDefinitions:
+                -
+                    AttributeName: "dtc"
+                    AttributeType: "S"
+            KeySchema:
+                -
+                    AttributeName: "dtc"
+                    KeyType: "HASH"
+            ProvisionedThroughput:
+                ReadCapacityUnits: 5
+                WriteCapacityUnits: 5
+
+    TelemetricsDtcReferenceData:
+        Type: "Custom::LoadLambda"
+        Properties:
+            ServiceToken:
+                Fn::GetAtt:
+                    - "ConnectedVehicleHelper"
+                    - "Arn"
+            Region:
+                - Ref: "AWS::Region"
+            tableName: !Ref DtcTable
+            customAction: "loadDtcCodes"
+
+    ConnectedVehicleHelperRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            RoleName: !Join ["-", [Ref: "AWS::StackName", "helper-role", Ref: "AWS::Region" ]]
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Principal:
+                            Service:
+                                - "lambda.amazonaws.com"
+                        Action:
+                                - "sts:AssumeRole"
+            Path: "/"
+            Policies:
+                -
+                    PolicyName: "ConnectedVehicleHelperPolicy"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource:
+                                    - !Join ["", ["arn:aws:logs:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":log-group:/aws/lambda/", Ref: "AWS::StackName", "-connected-vehicle-helper:*"]]
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "iot:CreateTopicRule"
+                                    - "iot:DeleteTopicRule"
+                                Resource:
+                                    - "*"
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "iam:PassRole"
+                                Resource:
+                                    - !Sub "arn:aws:iam::${AWS::AccountId}:role/${TelemetricsIotActionsRole}"
+                                    - !Sub "arn:aws:iam::${AWS::AccountId}:role/${TelemetricsAnomalyAnalyticsRole}"
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:BatchGetItem"
+                                    - "dynamodb:BatchWriteItem"
+                                    - "dynamodb:DeleteItem"
+                                    - "dynamodb:GetItem"
+                                    - "dynamodb:PutItem"
+                                    - "dynamodb:Query"
+                                    - "dynamodb:Scan"
+                                    - "dynamodb:UpdateItem"
+                                Resource:
+                                    - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: DtcTable]]
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "kinesisanalytics:CreateApplication"
+                                    - "kinesisanalytics:DeleteApplication"
+                                    - "kinesisanalytics:DescribeApplication"
+                                    - "kinesisanalytics:StartApplication"
+                                Resource:
+                                    - !Sub "arn:aws:kinesisanalytics:${AWS::Region}:${AWS::AccountId}:application/*"
+
+    ConnectedVehicleHelper:
+        Type: "AWS::Lambda::Function"
+        Properties:
+            Description: "AWS Connected Vehicle Cloud deployment custom resource helper service"
+            Code:
+                S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+                S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "cv-deployment-helper.zip"]]
+            Description: "A connected vehicle helper function for solution deployment"
+            Handler: "index.handler"
+            FunctionName: !Sub "${AWS::StackName}-connected-vehicle-helper"
+            MemorySize: "256"
+            Role:
+                Fn::GetAtt:
+                    - "ConnectedVehicleHelperRole"
+                    - "Arn"
+            Runtime: "nodejs6.10"
+            Timeout: "300"
+
+Outputs:
+    DtcTable:
+        Description: "JITR Lambda Function"
+        Value: !Ref JitrServiceFunction
+    DtcTable:
+        Description: "DTC reference table"
+        Value: !Ref DtcTable
+    VehicleDtcTable:
+        Description: "Vehicle DTC table"
+        Value: !Ref VehicleDtcTable
+    VehicleTripTable:
+        Description: "Vehicle Trip table"
+        Value: !Ref VehicleTripTable
+    VehicleOwnerTable:
+        Description: "Vehicle Owner table"
+        Value: !Ref VehicleOwnerTable
+    VehicleAnomalyTable:
+        Description: "Vehicle Anomaly table"
+        Value: !Ref VehicleAnomalyTable
+    HealthReportTable:
+        Description: "Vehicle Health Report table"
+        Value: !Ref HealthReportTable
+    UserPool:
+        Description: "Connected Vehicle User Pool"
+        Value: !GetAtt ConnectedVehicleUserPool.Arn
+    CognitoUserPoolId:
+        Description: "Connected Vehicle User Pool ID"
+        Value: !Ref ConnectedVehicleUserPool
+    CognitoClientId:
+        Description: "Connected Vehicle Client"
+        Value: !Ref ConnectedVehicleClient
+    CognitoIdentityPoolId:
+        Description: "Identity Pool ID"
+        Value: !Ref ConnectedVehicleIdentityPool
+    TelemetricsApiEndpoint:
+        Description: "Telemetrics API ID"
+        Value: !Join ["", ["https://", Ref: TelemetricsApi, ".execute-api.", Ref: "AWS::Region", ".amazonaws.com/prod"]]

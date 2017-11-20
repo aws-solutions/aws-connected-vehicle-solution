@@ -1,0 +1,32 @@
+{
+    "name": "vhr-vehicle-jitr",
+    "description": "A Lambda function for the vehicle just-in-time-registration microservice",
+    "main": "index.js",
+    "author": {
+        "name": "aws-solutions-builder"
+    },
+    "version": "0.0.1",
+    "private": "true",
+    "dependencies": {
+        "aws-sdk": "*"
+    },
+    "devDependencies": {
+        "chai": "*",
+        "sinon": "*",
+        "sinon-chai": "*",
+        "mocha": "*",
+        "aws-sdk-mock": "*",
+        "npm-run-all": "*",
+        "proxyquire": "*"
+    },
+    "scripts": {
+        "pretest": "npm install",
+        "test": "mocha *.spec.js",
+        "build-init": "rm -rf dist && rm -f archive.zip && mkdir dist",
+        "build:copy": "cp index.js dist/",
+        "build:install": "cp package.json dist/ && cd dist && npm install --production",
+        "build": "npm-run-all -s build-init build:copy build:install",
+        "zip": "cd dist && zip -rq vhr-vehicle-jitr.zip ."
+    },
+    "bundledDependencies": []
+}

@@ -1,0 +1,39 @@
+{
+    "name": "vhr-notification-service",
+    "description": "A Lambda function for the vehicle health report notification microservice",
+    "main": "index.js",
+    "author": {
+        "name": "aws-solutions-builder"
+    },
+    "version": "0.0.1",
+    "private": "true",
+    "dependencies": {
+        "aws-sdk": "*",
+        "moment": "*",
+        "shortid": "*",
+        "underscore": "*"
+    },
+    "devDependencies": {
+        "chai": "*",
+        "sinon": "*",
+        "sinon-chai": "*",
+        "mocha": "*",
+        "aws-sdk-mock": "*",
+        "npm-run-all": "*",
+        "proxyquire": "*"
+    },
+    "scripts": {
+        "pretest": "npm install",
+        "test": "env VEHICLE_OWNER_TBL='vehicle_tbl' USER_POOL_ID='userpool' mocha lib/*.spec.js",
+        "build-init": "rm -rf dist && rm -f archive.zip && mkdir dist && mkdir dist/lib",
+        "build:copy": "cp index.js dist/ && cp -r lib/*.js dist/lib",
+        "build:install": "cp package.json dist/ && cd dist && npm install --production",
+        "build": "npm-run-all -s build-init build:copy build:install",
+        "zip": "cd dist && zip -rq vhr-notification-service.zip ."
+    },
+    "bundledDependencies": [
+        "moment",
+        "shortid",
+        "underscore"
+    ]
+}
