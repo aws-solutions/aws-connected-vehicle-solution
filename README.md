@@ -2,7 +2,7 @@
 The AWS Connected Vehicle Solution is a reference implementation that provides a foundation for automotive product transformations for connected vehicle services, autonomous driving, electric powertrains, and shared mobility.
 
 ## Getting Started
-To get started with the AWS Connected Vehicle Solution, please review the solution documentation. http://aws.amazon.com/answers/iot/connected-vehicle-cloud/
+To get started with the AWS Connected Vehicle Solution, please review the solution documentation. https://aws.amazon.com/answers/iot/connected-vehicle-solution/
 
 ## Building distributables for customization
 * Configure the bucket name of your target Amazon S3 distribution bucket
