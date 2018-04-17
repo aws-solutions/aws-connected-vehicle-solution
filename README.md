@@ -39,6 +39,7 @@ The AWS Connected Vehicle Solution project consists of microservices that facili
     |-driversafety/ [ microservice to orchestrate the creation of driver scores ]
     |-dtc/          [ microservice to orchestrate the capture, humanization and persistence of diagnostic trouble codes ]
     |-jitr/         [ microservice to orchestrate registration and policy creation for just-in-time registration of devices ]    
+    |-marketing/ [ microservice to provide location based marketing based on a defined set of POIs ]
     |-notification/ [ microservice to send SMS and MQTT notifications for the solution ]
     |-vehicle/      [ microservice to provide proxy interface for the AWS Connected Vehicle Solution API ]    
 </pre>

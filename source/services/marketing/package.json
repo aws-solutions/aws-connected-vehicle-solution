@@ -1,0 +1,39 @@
+{
+    "name": "vhr-marketing-service",
+    "description": "A Lambda function for the location-based marketing microservice",
+    "main": "index.js",
+    "author": {
+        "name": "aws-solutions-builder"
+    },
+    "version": "0.0.1",
+    "private": "true",
+    "dependencies": {
+        "aws-sdk": "*",
+        "moment": "*",
+        "geolib": "*",
+        "underscore": "*"
+    },
+    "devDependencies": {
+        "chai": "*",
+        "sinon": "*",
+        "sinon-chai": "*",
+        "mocha": "*",
+        "aws-sdk-mock": "*",
+        "npm-run-all": "*",
+        "proxyquire": "*"
+    },
+    "scripts": {
+        "pretest": "npm install",
+        "test": "env MKT_TBL='AdTrackingTable' POI_TBL='MarketingPoiTable' NOTIFICATION_SERVICE='notifyservice' mocha lib/*.spec.js",
+        "build-init": "rm -rf dist && rm -f archive.zip && mkdir dist && mkdir dist/lib",
+        "build:copy": "cp index.js dist/ && cp -r lib/*.js dist/lib",
+        "build:install": "cp package.json dist/ && cd dist && npm install --production",
+        "build": "npm-run-all -s build-init build:copy build:install",
+        "zip": "cd dist && zip -rq vhr-marketing-service.zip ."
+    },
+    "bundledDependencies": [
+        "moment",
+        "geolib",
+        "underscore"
+    ]
+}

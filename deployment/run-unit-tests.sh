@@ -17,3 +17,7 @@ npm test
 cd ../vehicle
 npm install
 npm test
+
+cd ../marketing
+npm install
+npm test

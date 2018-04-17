@@ -2,9 +2,13 @@ rm -r ./dist
 
 mkdir ./dist
 
-cp ./connected-vehicle-platform.yaml ./dist/aws-connected-vehicle-cloud.template
+cp ./connected-vehicle-platform.yaml ./dist/aws-connected-vehicle-solution.template
+export BUCKET_PREFIX=solutions-test
+if [ $PIPELINE_TYPE = "release" ]; then
+    export BUCKET_PREFIX=solutions
+fi
 replace="s/%%BUCKET_NAME%%/$BUCKET_PREFIX/g"
-sed -i '' -e $replace dist/aws-connected-vehicle-cloud.template
+sed -i '' -e $replace dist/aws-connected-vehicle-solution.template
 
 cd ../source/services/anomaly
 npm install
@@ -17,6 +21,12 @@ npm install
 npm run build
 npm run zip
 cp ./dist/vhr-driver-safety-service.zip ../../../deployment/dist/vhr-driver-safety-service.zip
+
+cd ../marketing
+npm install
+npm run build
+npm run zip
+cp ./dist/vhr-marketing-service.zip ../../../deployment/dist/vhr-marketing-service.zip
 
 cd ../dtc
 npm install

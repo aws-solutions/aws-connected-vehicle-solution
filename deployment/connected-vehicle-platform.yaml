@@ -1,13 +1,140 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: (SO0036) - The AWS CloudFormation template for deployment of the AWS Connected Vehicle Cloud. Version 1.0.
+Description: (SO0036) - The AWS CloudFormation template for deployment of the AWS Connected Vehicle Solution. Version 2.0.
 
 Mappings:
     SourceCode:
         General:
             S3Bucket: "%%BUCKET_NAME%%"
-            KeyPrefix: "connected-vehicle-cloud/latest"
+            KeyPrefix: "connected-vehicle-solution/latest"
 
 Resources:
+    LocationBasedMarketingFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            Description: "AWS Connected Vehicle Solution location-based marketing function"
+            Code:
+                S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+                S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-marketing-service.zip"]]
+            Handler: index.handler
+            Role:
+                Fn::GetAtt: [ LocationBasedMarketingRole , "Arn" ]
+            Runtime: nodejs6.10
+            Timeout: 10
+            MemorySize: 256
+            Environment:
+                Variables:
+                    MKT_TBL: !Ref AdTrackingTable
+                    NOTIFICATION_SERVICE: !Ref NotificationServiceFunction
+                    POI_TBL: !Ref MarketingPoiTable
+
+    LocationBasedMarketingRule:
+        Type: "AWS::IoT::TopicRule"
+        Properties:
+            RuleName: "ConnectedVehicleLocationBasedMarketing"
+            TopicRulePayload:
+                RuleDisabled: "false"
+                Description: "Processing of location-based advertisement data from the AWS Connected Vehicle Solution."
+                Sql: >-
+                    SELECT * FROM 'connectedcar/telemetry/#' WHERE name = 'location'
+                Actions:
+                    -
+                        Lambda:
+                            FunctionArn: !GetAtt LocationBasedMarketingFunction.Arn
+
+    LambdaInvokeMarketingServicePermission:
+        Type: "AWS::Lambda::Permission"
+        Properties:
+            FunctionName: !GetAtt LocationBasedMarketingFunction.Arn
+            Action: "lambda:InvokeFunction"
+            Principal: "iot.amazonaws.com"
+            SourceArn: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:rule/${LocationBasedMarketingRule}"
+            SourceAccount: !Sub "${AWS::AccountId}"
+
+    LocationBasedMarketingRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Principal:
+                            Service:
+                                - "lambda.amazonaws.com"
+                        Action:
+                                - "sts:AssumeRole"
+            Path: "/"
+            Policies:
+                -
+                    PolicyName: "LocationBasedMarketingPolicy"
+                    PolicyDocument:
+                      Version: "2012-10-17"
+                      Statement:
+                          -
+                              Effect: "Allow"
+                              Action:
+                                  - "logs:CreateLogGroup"
+                                  - "logs:CreateLogStream"
+                                  - "logs:PutLogEvents"
+                              Resource:
+                                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+                          -
+                              Effect: "Allow"
+                              Action:
+                                  - "dynamodb:PutItem"
+                                  - "dynamodb:Query"
+                              Resource:
+                                  - !GetAtt AdTrackingTable.Arn
+                          -
+                              Effect: "Allow"
+                              Action:
+                                  - "dynamodb:Scan"
+                              Resource:
+                                  - !GetAtt MarketingPoiTable.Arn
+                          -
+                              Effect: "Allow"
+                              Action:
+                                  - "lambda:InvokeFunction"
+                              Resource:
+                                  - !GetAtt NotificationServiceFunction.Arn
+
+    MarketingPoiTable:
+        Type: "AWS::DynamoDB::Table"
+        DeletionPolicy: "Delete"
+        Properties:
+            AttributeDefinitions:
+                -
+                    AttributeName: "poi_id"
+                    AttributeType: "S"
+            KeySchema:
+                -
+                    AttributeName: "poi_id"
+                    KeyType: "HASH"
+            ProvisionedThroughput:
+                ReadCapacityUnits: 5
+                WriteCapacityUnits: 5
+
+    AdTrackingTable:
+        Type: "AWS::DynamoDB::Table"
+        DeletionPolicy: "Delete"
+        Properties:
+            AttributeDefinitions:
+                -
+                    AttributeName: "trip_id"
+                    AttributeType: "S"
+                -
+                    AttributeName: "poi_id"
+                    AttributeType: "S"
+            KeySchema:
+                -
+                    AttributeName: "trip_id"
+                    KeyType: "HASH"
+                -
+                    AttributeName: "poi_id"
+                    KeyType: "RANGE"
+            ProvisionedThroughput:
+                ReadCapacityUnits: 5
+                WriteCapacityUnits: 5
 
     ConnectedVehicleUserPool:
         Type: "AWS::Cognito::UserPool"
@@ -153,8 +280,7 @@ Resources:
                         Action:
                             - "mobileanalytics:PutEvents"
                             - "cognito-identity:*"
-                        Resource:
-                            - "*"
+                        Resource: !Sub "arn:aws:cognito-identity:${AWS::Region}:${AWS::AccountId}:identitypool/${ConnectedVehicleIdentityPool}"
                     -
                         Effect: "Allow"
                         Action:
@@ -168,7 +294,7 @@ Resources:
                         Action:
                             - "s3:GetObject"
                         Resource:
-                            - "*"
+                            - Fn::Sub: "arn:aws:s3:::${TelemetricTripDataBucket}/*"
             Roles:
                 -
                     Ref: "ConnectedVehicleIdentityPoolAuthRole"
@@ -204,9 +330,7 @@ Resources:
                         Effect: "Allow"
                         Action:
                             - "mobileanalytics:PutEvents"
-                            - "cognito-sync:*"
-                        Resource:
-                            - "*"
+                        Resource: !Sub "arn:aws:cognito-identity:${AWS::Region}:${AWS::AccountId}:identitypool/${ConnectedVehicleIdentityPool}"
                     -
                         Effect: "Allow"
                         Action:
@@ -222,7 +346,7 @@ Resources:
     TelemetricsApi:
         Type: AWS::ApiGateway::RestApi
         Properties:
-            Description: "AWS Connected Vehicle Cloud API"
+            Description: "AWS Connected Vehicle Solution API"
             Body:
                 swagger: "2.0"
                 info:
@@ -1207,7 +1331,7 @@ Resources:
             RuleName: "ConnectedVehicleTelematicsDtc"
             TopicRulePayload:
                 RuleDisabled: "false"
-                Description: "Processing of DTC messages from the AWS Connected Vehicle Cloud."
+                Description: "Processing of DTC messages from the AWS Connected Vehicle Solution."
                 Sql: >-
                     SELECT * FROM 'connectedcar/dtc/#'
                 Actions:
@@ -1230,7 +1354,7 @@ Resources:
             RuleName: "ConnectedVehicleJITR"
             TopicRulePayload:
                 RuleDisabled: "false"
-                Description: "Just in time registration (JITR) for AWS Connected Vehicle Cloud."
+                Description: "Just in time registration (JITR) for AWS Connected Vehicle Solution."
                 Sql: >-
                     SELECT * FROM '$aws/events/certificates/registered/certid'
                 Actions:
@@ -1350,7 +1474,7 @@ Resources:
     JitrServiceFunction:
       Type: AWS::Lambda::Function
       Properties:
-          Description: "AWS Connected Vehicle Cloud Just-In-Time-Registration microservice"
+          Description: "AWS Connected Vehicle Solution Just-In-Time-Registration microservice"
           Code:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-vehicle-jitr.zip"]]
@@ -1363,7 +1487,7 @@ Resources:
     AnomalyServiceFunction:
       Type: AWS::Lambda::Function
       Properties:
-          Description: "AWS Connected Vehicle Cloud anomaly detection microservice"
+          Description: "AWS Connected Vehicle Solution anomaly detection microservice"
           Code:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-anomaly-service.zip"]]
@@ -1390,7 +1514,7 @@ Resources:
     DtcServiceFunction:
       Type: AWS::Lambda::Function
       Properties:
-          Description: "AWS Connected Vehicle Cloud diagnostic trouble code humanization and alerting microservice"
+          Description: "AWS Connected Vehicle Solution diagnostic trouble code humanization and alerting microservice"
           Code:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-dtc-service.zip"]]
@@ -1408,7 +1532,7 @@ Resources:
     NotificationServiceFunction:
       Type: AWS::Lambda::Function
       Properties:
-          Description: "AWS Connected Vehicle Cloud SNS and MQTT notification microservice"
+          Description: "AWS Connected Vehicle Solution SNS and MQTT notification microservice"
           Code:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-notification-service.zip"]]
@@ -1425,7 +1549,7 @@ Resources:
     DriverSafetyServiceFunction:
       Type: AWS::Lambda::Function
       Properties:
-          Description: "AWS Connected Vehicle Cloud driver score processing and alerting microservice"
+          Description: "AWS Connected Vehicle Solution driver score processing and alerting microservice"
           Code:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-driver-safety-service.zip"]]
@@ -1442,7 +1566,7 @@ Resources:
     VehicleServiceFunction:
       Type: AWS::Lambda::Function
       Properties:
-          Description: "AWS Connected Vehicle Cloud vehicle interface microservice for API"
+          Description: "AWS Connected Vehicle Solution vehicle interface microservice for API"
           Code:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-vehicle-service.zip"]]
@@ -2177,6 +2301,7 @@ Resources:
                                     - "dynamodb:UpdateItem"
                                 Resource:
                                     - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: DtcTable]]
+                                    - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: MarketingPoiTable]]
                             -
                                 Effect: "Allow"
                                 Action:
@@ -2187,14 +2312,25 @@ Resources:
                                 Resource:
                                     - !Sub "arn:aws:kinesisanalytics:${AWS::Region}:${AWS::AccountId}:application/*"
 
+    MarketingPoiData:
+        Type: "Custom::LoadLambda"
+        Properties:
+            ServiceToken:
+                Fn::GetAtt:
+                    - "ConnectedVehicleHelper"
+                    - "Arn"
+            Region:
+                - Ref: "AWS::Region"
+            tableName: !Ref MarketingPoiTable
+            customAction: "loadPois"
+
     ConnectedVehicleHelper:
         Type: "AWS::Lambda::Function"
         Properties:
-            Description: "AWS Connected Vehicle Cloud deployment custom resource helper service"
+            Description: "AWS Connected Vehicle Solution deployment custom resource helper service"
             Code:
                 S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
                 S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "cv-deployment-helper.zip"]]
-            Description: "A connected vehicle helper function for solution deployment"
             Handler: "index.handler"
             FunctionName: !Sub "${AWS::StackName}-connected-vehicle-helper"
             MemorySize: "256"
@@ -2205,10 +2341,8 @@ Resources:
             Runtime: "nodejs6.10"
             Timeout: "300"
 
+
 Outputs:
-    DtcTable:
-        Description: "JITR Lambda Function"
-        Value: !Ref JitrServiceFunction
     DtcTable:
         Description: "DTC reference table"
         Value: !Ref DtcTable
