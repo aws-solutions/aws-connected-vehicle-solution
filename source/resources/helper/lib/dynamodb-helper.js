@@ -43,6 +43,57 @@ let dynamoDBHelper = (function() {
     let dynamoDBHelper = function() {};
 
     /**
+     * Loads POIs into marketing table.
+     * @param {string} ddbTable - POI table.
+     * @param {loadDtcCodes~requestCallback} cb - The callback that handles the response.
+     */
+    dynamoDBHelper.prototype.loadPois = function(ddbTable, cb) {
+
+        let parser = csv();
+        let fileStream = fs.createReadStream('./marketing-pois.csv');
+        fileStream
+            .on('readable', function() {
+                var data;
+                while ((data = fileStream.read()) !== null) {
+                    parser.write(data);
+                }
+            })
+            .on('end', function() {
+                parser.end();
+            });
+
+        parser
+            .on('readable', function() {
+                var data;
+                while ((data = parser.read()) !== null) {
+                    codes_info.push({
+                        poi_id: data[0],
+                        address: data[1],
+                        city: data[2],
+                        latitude: data[3],
+                        longitude: data[4],
+                        message: data[5],
+                        poi: data[6],
+                        radius: data[7],
+                        state: data[8]
+                    });
+                }
+            })
+            .on('end', function() {
+                console.log('Attempting to load POIs to marketing table.');
+                loadCodes(codes_info, 0, ddbTable, function(err, data) {
+                    if (err) {
+                        console.log('Error loading POI marketing table', err);
+                    } else {
+                        console.log('Successfully loaded POI marketing table.');
+                    }
+                    cb(null, 'success');
+                });
+            });
+
+    };
+
+    /**
      * Loads DTC codes into reference table.
      * @param {string} ddbTable - DTC reference table.
      * @param {loadDtcCodes~requestCallback} cb - The callback that handles the response.

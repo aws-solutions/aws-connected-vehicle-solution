@@ -85,8 +85,7 @@ let advertisement = (function() {
       if (index < items.length) {
           console.log("processing: ", items[index]);
           let poi_point = {latitude: items[index].latitude, longitude: items[index].longitude};
-          if(geolib.isPointInCircle(poi_point,{latitude: record.latitude, longitude: record.longitude},items[index].radius)){
-              console.log(items[index]);
+          if(geolib.isPointWithinRadius(poi_point,{latitude: record.latitude, longitude: record.longitude},items[index].radius)){
               console.log('point is in circle for ' + items[index].poi);
               processAd(record, items[index], function(err, data) {
                   if (err) {

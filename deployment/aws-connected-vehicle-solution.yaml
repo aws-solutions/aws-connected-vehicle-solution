@@ -18,7 +18,7 @@ Resources:
             Handler: index.handler
             Role:
                 Fn::GetAtt: [ LocationBasedMarketingRole , "Arn" ]
-            Runtime: nodejs6.10
+            Runtime: nodejs8.10
             Timeout: 10
             MemorySize: 256
             Environment:
@@ -97,6 +97,11 @@ Resources:
                                   - "lambda:InvokeFunction"
                               Resource:
                                   - !GetAtt NotificationServiceFunction.Arn
+        Metadata: 
+          cfn_nag: 
+            rules_to_suppress: 
+              - id: W11 
+                reason: "The * resource allows the LocationBasedMarketingRole to exchange information with solution resources."
 
     MarketingPoiTable:
         Type: "AWS::DynamoDB::Table"
@@ -298,6 +303,13 @@ Resources:
             Roles:
                 -
                     Ref: "ConnectedVehicleIdentityPoolAuthRole"
+        Metadata: 
+          cfn_nag: 
+            rules_to_suppress: 
+              - id: F5 
+                reason: "The cognito-identity:* action permits the ConnectedVehicleIdentityPoolAuthPolicy to exchange user identity information and credentials with Amazon Cognito." 
+              - id: W13 
+                reason: "The cognito-identity:* action permits the ConnectedVehicleIdentityPoolAuthPolicy to exchange user identity information and credentials with Amazon Cognito." 
 
     ConnectedVehicleIdentityPoolUnauthRole:
         Type: "AWS::IAM::Role"
@@ -342,6 +354,11 @@ Resources:
             Roles:
                 -
                     Ref: "ConnectedVehicleIdentityPoolUnauthRole"
+        Metadata: 
+          cfn_nag: 
+            rules_to_suppress: 
+              - id: W13 
+                reason: "The * resource allows the ConnectedVehicleIdentityPoolUnauthRole to exchange information with solution resources."
 
     TelemetricsApi:
         Type: AWS::ApiGateway::RestApi
@@ -1454,6 +1471,11 @@ Resources:
         DeletionPolicy: Retain
         Properties:
             BucketName: !Join ["", ["connected-vehicle-data-", Ref: "AWS::Region", "-", Ref: "AWS::AccountId"]]
+        Metadata: 
+          cfn_nag: 
+            rules_to_suppress: 
+              - id: W35 
+                reason: "TelemetricDataBucket validated and does not require access logging to be configured."
 
     TelemetricTripDataBucket:
         Type: AWS::S3::Bucket
@@ -1470,6 +1492,11 @@ Resources:
                         - "GET"
                     AllowedHeaders:
                         - "*"
+        Metadata: 
+          cfn_nag: 
+            rules_to_suppress: 
+              - id: W35 
+                reason: "TelemetricTripDataBucket validated and does not require access logging to be configured."
 
     JitrServiceFunction:
       Type: AWS::Lambda::Function
@@ -1479,7 +1506,7 @@ Resources:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-vehicle-jitr.zip"]]
           Handler: index.handler
-          Runtime: nodejs6.10
+          Runtime: nodejs8.10
           Role: !GetAtt JitrServiceRole.Arn
           Timeout: 300
           MemorySize: 256
@@ -1492,7 +1519,7 @@ Resources:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-anomaly-service.zip"]]
           Handler: index.handler
-          Runtime: nodejs6.10
+          Runtime: nodejs8.10
           Role: !GetAtt AnomalyServiceRole.Arn
           Timeout: 300
           MemorySize: 256
@@ -1519,7 +1546,7 @@ Resources:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-dtc-service.zip"]]
           Handler: index.handler
-          Runtime: nodejs6.10
+          Runtime: nodejs8.10
           Role: !GetAtt DtcServiceRole.Arn
           Timeout: 300
           MemorySize: 256
@@ -1537,7 +1564,7 @@ Resources:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-notification-service.zip"]]
           Handler: index.handler
-          Runtime: nodejs6.10
+          Runtime: nodejs8.10
           Role: !GetAtt NotificationServiceRole.Arn
           Timeout: 300
           MemorySize: 256
@@ -1554,7 +1581,7 @@ Resources:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-driver-safety-service.zip"]]
           Handler: index.handler
-          Runtime: nodejs6.10
+          Runtime: nodejs8.10
           Role: !GetAtt DriverSafetyServiceRole.Arn
           Timeout: 300
           MemorySize: 256
@@ -1571,7 +1598,7 @@ Resources:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-vehicle-service.zip"]]
           Handler: index.handler
-          Runtime: nodejs6.10
+          Runtime: nodejs8.10
           Role: !GetAtt VehicleServiceRole.Arn
           Timeout: 300
           MemorySize: 256
@@ -1588,6 +1615,11 @@ Resources:
         Properties:
             Name: cc-anomaly-stream
             ShardCount: 2
+        Metadata: 
+          cfn_nag: 
+            rules_to_suppress: 
+              - id: W28 
+                reason: "Resource name validated and found to be non-explicit."
 
     TelemetricsDeliveryStream:
         Type: AWS::KinesisFirehose::DeliveryStream
@@ -1673,6 +1705,11 @@ Resources:
             Roles:
                 -
                     Ref: "TelemetricsDeliveryStreamRole"
+        Metadata: 
+          cfn_nag: 
+            rules_to_suppress: 
+              - id: W13 
+                reason: "The * resource allows the TelemetricsDeliveryStreamPolicy to exchange information with solution resources."
 
     TelemetricsAnomalyAnalyticsRole:
         Type: "AWS::IAM::Role"
@@ -1709,7 +1746,11 @@ Resources:
                                     - "kinesis:PutRecords"
                                 Resource:
                                     - Fn::Sub: "arn:aws:kinesis:${AWS::Region}:${AWS::AccountId}:stream/${AnomalyStream}"
-
+        Metadata: 
+          cfn_nag: 
+            rules_to_suppress: 
+              - id: F3 
+                reason: "The wildcard action in the TelemetricsAnomalyAnalyticsPolicy permits the TelemetricsAnomalyAnalyticsRole to read Kinesis Firehose streams and inputs." 
     JitrServiceRole:
         Type: "AWS::IAM::Role"
         Properties:
@@ -1751,6 +1792,11 @@ Resources:
             Roles:
                 -
                     Ref: "JitrServiceRole"
+        Metadata: 
+          cfn_nag: 
+            rules_to_suppress: 
+              - id: W13 
+                reason: "The * resource allows the JitrServicePolicy to exchange information with solution resources."
 
     AnomalyServiceRole:
         Type: "AWS::IAM::Role"
@@ -1812,6 +1858,12 @@ Resources:
                                         Fn::GetAtt:
                                             - "NotificationServiceFunction"
                                             - "Arn"
+        Metadata: 
+          cfn_nag: 
+            rules_to_suppress: 
+              - id: W11 
+                reason: "The * resource allows the AnomalyServiceRole to exchange information with solution resources."
+
 
     DtcServiceRole:
         Type: "AWS::IAM::Role"
@@ -1869,6 +1921,11 @@ Resources:
             Roles:
                 -
                     Ref: "DtcServiceRole"
+        Metadata: 
+          cfn_nag: 
+            rules_to_suppress: 
+              - id: W13 
+                reason: "The * resource allows the DtcServicePolicy to exchange information with solution resources."
 
     NotificationServiceRole:
         Type: "AWS::IAM::Role"
@@ -1941,6 +1998,11 @@ Resources:
             Roles:
                 -
                     Ref: "NotificationServiceRole"
+        Metadata: 
+          cfn_nag: 
+            rules_to_suppress: 
+              - id: W13 
+                reason: "The * resource allows the NotificationServicePolicy to exchange information with solution resources."
 
     VehicleServiceRole:
         Type: "AWS::IAM::Role"
@@ -1989,10 +2051,14 @@ Resources:
                             - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: VehicleDtcTable]]
                             - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: HealthReportTable]]
                             - !Join ["", ["arn:aws:dynamodb:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":table/", Ref: VehicleAnomalyTable]]
-
             Roles:
                 -
                     Ref: "VehicleServiceRole"
+        Metadata: 
+          cfn_nag: 
+            rules_to_suppress: 
+              - id: W13 
+                reason: "The * resource allows the VehicleServicePolicy to exchange information with solution resources."
 
     DriverSafetyServiceRole:
         Type: "AWS::IAM::Role"
@@ -2049,6 +2115,12 @@ Resources:
             Roles:
                 -
                     Ref: "DriverSafetyServiceRole"
+        Metadata: 
+          cfn_nag: 
+            rules_to_suppress: 
+              - id: W13 
+                reason: "The * resource allows the DriverSafetyServiceRole to exchange information with solution resources."
+          
 
     ConnectedVehicleDevicePolicy:
         Type: "AWS::IAM::ManagedPolicy"
@@ -2079,6 +2151,13 @@ Resources:
                         Resource:
                             - Fn::Sub: "arn:aws:s3:::${TelemetricTripDataBucket}"
                             - Fn::Sub: "arn:aws:s3:::${TelemetricTripDataBucket}/*"
+        Metadata: 
+          cfn_nag: 
+            rules_to_suppress: 
+              - id: F5 
+                reason: "The greengrass:* and iot:* actions permit the ConnectedVehicleDevice to exchange information with solution resources." 
+              - id: W13 
+                reason: "The * resource allows the ConnectedVehicleDevicePolicy to exchange information with solution resources."
 
     VehicleDtcTable:
         Type: "AWS::DynamoDB::Table"
@@ -2311,6 +2390,13 @@ Resources:
                                     - "kinesisanalytics:StartApplication"
                                 Resource:
                                     - !Sub "arn:aws:kinesisanalytics:${AWS::Region}:${AWS::AccountId}:application/*"
+        Metadata: 
+          cfn_nag: 
+            rules_to_suppress: 
+              - id: W11 
+                reason: "The * resource allows the ConnectedVehicleHelperRole to exchange information with solution resources."
+              - id: W28 
+                reason: "Resource name validated and found to be non-explicit."
 
     MarketingPoiData:
         Type: "Custom::LoadLambda"
@@ -2338,7 +2424,7 @@ Resources:
                 Fn::GetAtt:
                     - "ConnectedVehicleHelperRole"
                     - "Arn"
-            Runtime: "nodejs6.10"
+            Runtime: "nodejs8.10"
             Timeout: "300"
 
 

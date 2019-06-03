@@ -21,11 +21,11 @@ chmod +x build-s3-dist.sh \n
 
 ```
 cd ./deployment \n
-s3 cp ./dist s3://my-bucket-name/aws-cv-cloud/latest --recursive --profile aws-cred-profile-name \n
+s3 cp ./dist s3://my-bucket-name/aws-cv-solution/latest --recursive --profile aws-cred-profile-name \n
 ```
 
-* Get the link of the aws-connected-vehicle-cloud.template uploaded to your Amazon S3 bucket.
-* Deploy the AWS Connected Vehicle Solution to your account by launching a new AWS CloudFormation stack using the link of the aws-connected-vehicle-cloud.template.
+* Get the link of the aws-connected-vehicle-solution.template uploaded to your Amazon S3 bucket.
+* Deploy the AWS Connected Vehicle Solution to your account by launching a new AWS CloudFormation stack using the link of the aws-connected-vehicle-solution.template.
 
 ## File Structure
 The AWS Connected Vehicle Solution project consists of microservices that facilitate the functional areas of the platform. These microservices are deployed to a serverless environment in AWS Lambda.
@@ -39,7 +39,6 @@ The AWS Connected Vehicle Solution project consists of microservices that facili
     |-driversafety/ [ microservice to orchestrate the creation of driver scores ]
     |-dtc/          [ microservice to orchestrate the capture, humanization and persistence of diagnostic trouble codes ]
     |-jitr/         [ microservice to orchestrate registration and policy creation for just-in-time registration of devices ]    
-    |-marketing/ [ microservice to provide location based marketing based on a defined set of POIs ]
     |-notification/ [ microservice to send SMS and MQTT notifications for the solution ]
     |-vehicle/      [ microservice to provide proxy interface for the AWS Connected Vehicle Solution API ]    
 </pre>
@@ -54,9 +53,16 @@ Each microservice follows the structure of:
   |-package.json
 </pre>
 
+#### v2.1.0 changes
+
+```
+* [Update] Upgrade AWS Lambda version to 8.10
+
+```
+
 ***
 
-Copyright 2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
 Licensed under the Amazon Software License (the "License"). You may not use this file except in compliance with the License. A copy of the License is located at
 

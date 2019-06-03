@@ -152,6 +152,22 @@ exports.handler = (event, context, callback) => {
 
                 sendResponse(event, callback, context.logStreamName, responseStatus, responseData);
             });
+        } else if (event.ResourceProperties.customAction === 'loadPois') {
+            let _dynamoHelper = new DynamoHelper();
+            _dynamoHelper.loadPois(event.ResourceProperties.tableName, function(err, data) {
+                if (err) {
+                    responseData = {
+                        Error: ['Loading Marketing POI table', event.ResourceProperties.tableName, 'failed']
+                            .join(' ')
+                    };
+                    console.log([responseData.Error, ':\n', err].join(''));
+                } else {
+                    responseStatus = 'SUCCESS';
+                    responseData = {};
+                }
+
+                sendResponse(event, callback, context.logStreamName, responseStatus, responseData);
+            });
         } else if (event.ResourceProperties.customAction === 'createUuid') {
             responseStatus = 'SUCCESS';
             responseData = {
