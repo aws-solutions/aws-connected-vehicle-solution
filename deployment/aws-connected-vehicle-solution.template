@@ -4,7 +4,7 @@ Description: (SO0036) - The AWS CloudFormation template for deployment of the AW
 Mappings:
     SourceCode:
         General:
-            S3Bucket: "%%BUCKET_NAME%%"
+            S3Bucket: "%%BUCKET_PREFIX%%"
             KeyPrefix: "connected-vehicle-solution/latest"
 
 Resources:
