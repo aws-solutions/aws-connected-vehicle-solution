@@ -5,23 +5,29 @@ The AWS Connected Vehicle Solution is a reference implementation that provides a
 To get started with the AWS Connected Vehicle Solution, please review the solution documentation. https://aws.amazon.com/answers/iot/connected-vehicle-solution/
 
 ## Building distributables for customization
-* Configure the bucket name of your target Amazon S3 distribution bucket
+* Configure the bucket name and the region your target Amazon S3 distribution bucket
 ```
 export BUCKET_PREFIX=my-bucket-name
+export REGION=us-east-1
+```
+
+* Create a Amazon S3 distribution bucket. The name has to be suffixed with the target region. _Note:_ you must have the AWS Command Line Interface installed.
+```
+aws s3api create-bucket --bucket $BUCKET_PREFIX-$REGION --region $REGION
 ```
 
 * Clone the repository, then build the distibutables:
 ```
-cd ./deployment \n
-chmod +x build-s3-dist.sh \n
-./build-s3-dist.sh \n
+cd ./deployment
+chmod +x build-s3-dist.sh
+./build-s3-dist.sh
 ```
 
-* Deploy the distibutables to an Amazon S3 bucket in your account. _Note:_ you must have the AWS Command Line Interface installed.
+* Deploy the distributables to the Amazon S3 distribution bucket in your account.
 
 ```
-cd ./deployment \n
-s3 cp ./dist s3://my-bucket-name/aws-cv-solution/latest --recursive --profile aws-cred-profile-name \n
+cd ./deployment
+s3 cp ./dist s3://$BUCKET_PREFIX-$REGION/connected-vehicle-solution/latest --recursive --profile aws-cred-profile-name
 ```
 
 * Get the link of the aws-connected-vehicle-solution.template uploaded to your Amazon S3 bucket.

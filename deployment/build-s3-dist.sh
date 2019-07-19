@@ -1,13 +1,19 @@
-rm -r ./dist
+if [[ -d ./dist ]]; then
+    rm -r ./dist
+fi
 
 mkdir ./dist
 
-cp ./connected-vehicle-platform.yaml ./dist/aws-connected-vehicle-solution.template
-export BUCKET_PREFIX=solutions-test
-if [ $PIPELINE_TYPE = "release" ]; then
-    export BUCKET_PREFIX=solutions
+cp ./aws-connected-vehicle-solution.template ./dist/aws-connected-vehicle-solution.template
+
+if [[ -z $BUCKET_PREFIX ]]; then
+    export BUCKET_PREFIX=solutions-test
+    if [[ $PIPELINE_TYPE = "release" ]]; then
+        export BUCKET_PREFIX=solutions
+    fi
 fi
-replace="s/%%BUCKET_NAME%%/$BUCKET_PREFIX/g"
+
+replace="s/%%BUCKET_PREFIX%%/$BUCKET_PREFIX/g"
 sed -i '' -e $replace dist/aws-connected-vehicle-solution.template
 
 cd ../source/services/anomaly
