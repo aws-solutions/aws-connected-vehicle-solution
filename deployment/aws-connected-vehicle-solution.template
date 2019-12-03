@@ -1373,7 +1373,7 @@ Resources:
                 RuleDisabled: "false"
                 Description: "Just in time registration (JITR) for AWS Connected Vehicle Solution."
                 Sql: >-
-                    SELECT * FROM '$aws/events/certificates/registered/certid'
+                    SELECT * FROM '$aws/events/certificates/registered/#'
                 Actions:
                     -
                         Lambda:
