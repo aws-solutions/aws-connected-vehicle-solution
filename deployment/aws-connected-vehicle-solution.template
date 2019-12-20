@@ -1,11 +1,11 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: (SO0036) - The AWS CloudFormation template for deployment of the AWS Connected Vehicle Solution. Version 2.0.
+Description: (SO0036) - The AWS CloudFormation template for deployment of the  %%SOLUTION_NAME%%. Version %%VERSION%%
 
 Mappings:
     SourceCode:
         General:
             S3Bucket: "%%BUCKET_NAME%%"
-            KeyPrefix: "connected-vehicle-solution/latest"
+            KeyPrefix: "%%SOLUTION_NAME%%/%%VERSION%%"
 
 Resources:
     LocationBasedMarketingFunction:
@@ -18,7 +18,7 @@ Resources:
             Handler: index.handler
             Role:
                 Fn::GetAtt: [ LocationBasedMarketingRole , "Arn" ]
-            Runtime: nodejs8.10
+            Runtime: nodejs12.x
             Timeout: 10
             MemorySize: 256
             Environment:
@@ -115,9 +115,7 @@ Resources:
                 -
                     AttributeName: "poi_id"
                     KeyType: "HASH"
-            ProvisionedThroughput:
-                ReadCapacityUnits: 5
-                WriteCapacityUnits: 5
+            BillingMode: "PAY_PER_REQUEST"
 
     AdTrackingTable:
         Type: "AWS::DynamoDB::Table"
@@ -137,9 +135,7 @@ Resources:
                 -
                     AttributeName: "poi_id"
                     KeyType: "RANGE"
-            ProvisionedThroughput:
-                ReadCapacityUnits: 5
-                WriteCapacityUnits: 5
+            BillingMode: "PAY_PER_REQUEST"
 
     ConnectedVehicleUserPool:
         Type: "AWS::Cognito::UserPool"
@@ -1318,13 +1314,40 @@ Resources:
                       owner:
                         type: string
                         description: Unique user id for the vehicle owner
+    ApiLogs:
+        Type: "AWS::Logs::LogGroup"
+
+    ApiGatewayAccountLogsRole:
+        Type: AWS::IAM::Role
+        Properties:
+          AssumeRolePolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Principal:
+                  Service:
+                    - apigateway.amazonaws.com
+                Action:
+                  - sts:AssumeRole
+          ManagedPolicyArns:
+            - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+
+    ApiGatewayAccount:
+        Type: AWS::ApiGateway::Account
+        Properties:
+            CloudWatchRoleArn: !GetAtt ApiGatewayAccountLogsRole.Arn
 
     TelemetricsApiDeployment:
+        DependsOn: ApiGatewayAccount
         Type: "AWS::ApiGateway::Deployment"
         Properties:
             RestApiId: !Ref TelemetricsApi
             Description: "Production"
             StageName: "prod"
+            StageDescription:
+                AccessLogSetting:
+                    DestinationArn: !GetAtt ApiLogs.Arn
+                    Format: $context.identity.sourceIp $context.identity.caller $context.identity.user [$context.requestTime] "$context.httpMethod $context.resourcePath $context.protocol" $context.status $context.responseLength $context.requestId
 
     TelemetricsRawStorageRule:
         Type: "AWS::IoT::TopicRule"
@@ -1470,17 +1493,34 @@ Resources:
         Type: AWS::S3::Bucket
         DeletionPolicy: Retain
         Properties:
+            PublicAccessBlockConfiguration:
+                BlockPublicAcls: True
+                BlockPublicPolicy: True
+                IgnorePublicAcls: True
+                RestrictPublicBuckets: True
             BucketName: !Join ["", ["connected-vehicle-data-", Ref: "AWS::Region", "-", Ref: "AWS::AccountId"]]
+            BucketEncryption:
+                ServerSideEncryptionConfiguration:
+                -
+                    ServerSideEncryptionByDefault:
+                        SSEAlgorithm: AES256
         Metadata: 
           cfn_nag: 
             rules_to_suppress: 
               - id: W35 
                 reason: "TelemetricDataBucket validated and does not require access logging to be configured."
+              - id: W51
+                reason: "Access to the bucket has been restricted using TelemetricsDeliveryStreamPolicy"
 
     TelemetricTripDataBucket:
         Type: AWS::S3::Bucket
         DeletionPolicy: Retain
         Properties:
+            PublicAccessBlockConfiguration:
+                BlockPublicAcls: True
+                BlockPublicPolicy: True
+                IgnorePublicAcls: True
+                RestrictPublicBuckets: True
             BucketName: !Join ["", ["connected-vehicle-trip-", Ref: "AWS::Region", "-", Ref: "AWS::AccountId"]]
             CorsConfiguration:
                 CorsRules:
@@ -1492,11 +1532,18 @@ Resources:
                         - "GET"
                     AllowedHeaders:
                         - "*"
+            BucketEncryption:
+                ServerSideEncryptionConfiguration:
+                  -
+                    ServerSideEncryptionByDefault:
+                        SSEAlgorithm: AES256
         Metadata: 
           cfn_nag: 
             rules_to_suppress: 
-              - id: W35 
+              - id: W35
                 reason: "TelemetricTripDataBucket validated and does not require access logging to be configured."
+              - id: W51
+                reason: "The access to the bucket is being restricted by ConnectedVehicleIdentityPoolAuthPolicy and ConnectedVehicleDevicePolicy"
 
     JitrServiceFunction:
       Type: AWS::Lambda::Function
@@ -1506,7 +1553,7 @@ Resources:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-vehicle-jitr.zip"]]
           Handler: index.handler
-          Runtime: nodejs8.10
+          Runtime: nodejs12.x
           Role: !GetAtt JitrServiceRole.Arn
           Timeout: 300
           MemorySize: 256
@@ -1519,7 +1566,7 @@ Resources:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-anomaly-service.zip"]]
           Handler: index.handler
-          Runtime: nodejs8.10
+          Runtime: nodejs12.x
           Role: !GetAtt AnomalyServiceRole.Arn
           Timeout: 300
           MemorySize: 256
@@ -1546,7 +1593,7 @@ Resources:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-dtc-service.zip"]]
           Handler: index.handler
-          Runtime: nodejs8.10
+          Runtime: nodejs12.x
           Role: !GetAtt DtcServiceRole.Arn
           Timeout: 300
           MemorySize: 256
@@ -1564,7 +1611,7 @@ Resources:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-notification-service.zip"]]
           Handler: index.handler
-          Runtime: nodejs8.10
+          Runtime: nodejs12.x
           Role: !GetAtt NotificationServiceRole.Arn
           Timeout: 300
           MemorySize: 256
@@ -1581,7 +1628,7 @@ Resources:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-driver-safety-service.zip"]]
           Handler: index.handler
-          Runtime: nodejs8.10
+          Runtime: nodejs12.x
           Role: !GetAtt DriverSafetyServiceRole.Arn
           Timeout: 300
           MemorySize: 256
@@ -1598,7 +1645,7 @@ Resources:
               S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
               S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "vhr-vehicle-service.zip"]]
           Handler: index.handler
-          Runtime: nodejs8.10
+          Runtime: nodejs12.x
           Role: !GetAtt VehicleServiceRole.Arn
           Timeout: 300
           MemorySize: 256
@@ -1615,6 +1662,9 @@ Resources:
         Properties:
             Name: cc-anomaly-stream
             ShardCount: 2
+            StreamEncryption:
+                EncryptionType: "KMS"
+                KeyId: alias/aws/kinesis
         Metadata: 
           cfn_nag: 
             rules_to_suppress: 
@@ -1746,6 +1796,12 @@ Resources:
                                     - "kinesis:PutRecords"
                                 Resource:
                                     - Fn::Sub: "arn:aws:kinesis:${AWS::Region}:${AWS::AccountId}:stream/${AnomalyStream}"
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "kms:GenerateDataKey"
+                                Resource:
+                                    - Fn::Sub: "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/kinesis"
         Metadata: 
           cfn_nag: 
             rules_to_suppress: 
@@ -1858,6 +1914,12 @@ Resources:
                                         Fn::GetAtt:
                                             - "NotificationServiceFunction"
                                             - "Arn"
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "kms:Decrypt"
+                                Resource:
+                                    - Fn::Sub: arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/kinesis
         Metadata: 
           cfn_nag: 
             rules_to_suppress: 
@@ -2177,9 +2239,7 @@ Resources:
                 -
                     AttributeName: "dtc_id"
                     KeyType: "RANGE"
-            ProvisionedThroughput:
-                ReadCapacityUnits: 5
-                WriteCapacityUnits: 5
+            BillingMode: "PAY_PER_REQUEST"
 
     VehicleTripTable:
         Type: "AWS::DynamoDB::Table"
@@ -2199,9 +2259,7 @@ Resources:
                 -
                     AttributeName: "trip_id"
                     KeyType: "RANGE"
-            ProvisionedThroughput:
-                ReadCapacityUnits: 30
-                WriteCapacityUnits: 30
+            BillingMode: "PAY_PER_REQUEST"
 
     HealthReportTable:
         Type: "AWS::DynamoDB::Table"
@@ -2221,9 +2279,7 @@ Resources:
                 -
                     AttributeName: "report_id"
                     KeyType: "RANGE"
-            ProvisionedThroughput:
-                ReadCapacityUnits: 2
-                WriteCapacityUnits: 2
+            BillingMode: "PAY_PER_REQUEST"
 
     VehicleAnomalyTable:
         Type: "AWS::DynamoDB::Table"
@@ -2256,12 +2312,7 @@ Resources:
                           KeyType: "RANGE"
                     Projection:
                         ProjectionType: "ALL"
-                    ProvisionedThroughput:
-                        ReadCapacityUnits: "30"
-                        WriteCapacityUnits: "30"
-            ProvisionedThroughput:
-                ReadCapacityUnits: 30
-                WriteCapacityUnits: 30
+            BillingMode: "PAY_PER_REQUEST"
 
     VehicleOwnerTable:
         Type: "AWS::DynamoDB::Table"
@@ -2289,12 +2340,7 @@ Resources:
                           KeyType: "HASH"
                     Projection:
                         ProjectionType: "ALL"
-                    ProvisionedThroughput:
-                        ReadCapacityUnits: "30"
-                        WriteCapacityUnits: "30"
-            ProvisionedThroughput:
-                ReadCapacityUnits: 2
-                WriteCapacityUnits: 2
+            BillingMode: "PAY_PER_REQUEST"
 
     DtcTable:
         Type: "AWS::DynamoDB::Table"
@@ -2308,9 +2354,7 @@ Resources:
                 -
                     AttributeName: "dtc"
                     KeyType: "HASH"
-            ProvisionedThroughput:
-                ReadCapacityUnits: 5
-                WriteCapacityUnits: 5
+            BillingMode: "PAY_PER_REQUEST"
 
     TelemetricsDtcReferenceData:
         Type: "Custom::LoadLambda"
@@ -2424,7 +2468,7 @@ Resources:
                 Fn::GetAtt:
                     - "ConnectedVehicleHelperRole"
                     - "Arn"
-            Runtime: "nodejs8.10"
+            Runtime: "nodejs12.x"
             Timeout: "300"
 
 

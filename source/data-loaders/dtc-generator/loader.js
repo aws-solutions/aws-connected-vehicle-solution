@@ -17,27 +17,72 @@
 
 'use strict';
 
+const fs = require('fs');
+let csv = require('fast-csv');
+let parser = csv();
+let codes_info = [];
 let AWS = require('aws-sdk');
-let Notification = require('./notification.js');
 
-module.exports.respond = function(event, cb) {
+const dynamoConfig = {
+    region: 'us-east-1'
+};
+const ddbTable = process.env.DTC_TABLE;
 
-    // get predication and store results
-    let _notification = new Notification();
-    _notification.sendNotiviationViaMqtt(event, function(err, mdata) {
-        if (err) {
-            console.log(err);
+let fileStream = fs.createReadStream('./obd-trouble-codes.csv');
+fileStream
+    .on('readable', function() {
+        var data;
+        while ((data = fileStream.read()) !== null) {
+            parser.write(data);
         }
+    })
+    .on('end', function() {
+        parser.end();
+    });
 
-        _notification.sendNotification(event, function(err, data) {
+parser
+    .on('readable', function() {
+        var data;
+        while ((data = parser.read()) !== null) {
+            console.log(data);
+            codes_info.push({
+                dtc: data[0],
+                description: data[1],
+                steps: []
+            });
+        }
+    })
+    .on('end', function() {
+        console.log('done');
+        loadCodes(codes_info, 0, function(err, data) {
             if (err) {
                 console.log(err);
-                return cb(err, null);
+            } else {
+                console.log(data);
+            }
+        });
+    });
+
+var loadCodes = function(items, index, cb) {
+    if (index < items.length) {
+        let params = {
+            TableName: ddbTable,
+            Item: items[index]
+        };
+
+        let docClient = new AWS.DynamoDB.DocumentClient(dynamoConfig);
+        docClient.put(params, function(err, data) {
+            if (err) {
+                console.log(err);
+            } else {
+                console.log(['Added DTC', params.Item.dtc].join(': '));
             }
 
-            return cb(null, data);
+            index++;
+            setTimeout(loadCodes, 100, items, index, cb);
         });
-
-    });
+    } else {
+        return cb(null, 'All codes processed..');
+    }
 
 };

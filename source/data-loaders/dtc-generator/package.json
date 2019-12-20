@@ -1,0 +1,25 @@
+{
+    "name": "connected-car-sim-engine",
+    "description": "The simulation engine for the connected car solutions",
+    "main": "index.js",
+    "license": "Apache 2.0",
+    "version": "0.0.1",
+    "private": "true",
+    "dependencies": {
+        "aws-sdk": "*",
+        "aws-iot-device-sdk": "*",
+        "moment": "*",
+        "randomstring": "*",
+        "shortid": "*",
+        "underscore": "*"
+    },
+    "devDependencies": {},
+    "scripts": {
+        "prestart": "npm install",
+        "start": "node ./",
+        "pretest": "npm install",
+        "test": "karma start karma.conf.js",
+        "test-single-run": "karma start karma.conf.js --single-run"
+    },
+    "bundledDependencies": []
+}

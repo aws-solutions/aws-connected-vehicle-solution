@@ -17,27 +17,51 @@
 
 'use strict';
 
-let AWS = require('aws-sdk');
-let Notification = require('./notification.js');
+const fs = require('fs');
+let csv = require('fast-csv');
+let fileStream = fs.createReadStream('./obd-trouble-codes.csv');
+let parser = csv();
+let codes = [];
+let codes_info = [];
 
-module.exports.respond = function(event, cb) {
-
-    // get predication and store results
-    let _notification = new Notification();
-    _notification.sendNotiviationViaMqtt(event, function(err, mdata) {
-        if (err) {
-            console.log(err);
+fileStream
+    .on('readable', function() {
+        var data;
+        while ((data = fileStream.read()) !== null) {
+            parser.write(data);
         }
-
-        _notification.sendNotification(event, function(err, data) {
-            if (err) {
-                console.log(err);
-                return cb(err, null);
-            }
-
-            return cb(null, data);
-        });
-
+    })
+    .on('end', function() {
+        parser.end();
     });
 
-};
+parser
+    .on('readable', function() {
+        var data;
+        while ((data = parser.read()) !== null) {
+            console.log(data);
+            codes_info.push({
+                code: data[0],
+                description: data[1]
+            });
+            codes.push(data[0]);
+        }
+    })
+    .on('end', function() {
+        console.log('done');
+        fs.writeFile('./dtc-info.js', JSON.stringify(codes_info), function(err) {
+            if (err) {
+                return console.log(err);
+            }
+
+            console.log('The file was saved!');
+        });
+
+        fs.writeFile('./diagnostic-trouble-codes.js', JSON.stringify(codes), function(err) {
+            if (err) {
+                return console.log(err);
+            }
+
+            console.log('The file was saved!');
+        });
+    });
