@@ -31,6 +31,7 @@ exports.handler = function(event, context, callback) {
     lib.respond(event, function(error, response) {
         if (error) {
             console.error(error);
+            console.error(error.message);
             return callback(null, error);
         } else {
             return callback(null, response);
