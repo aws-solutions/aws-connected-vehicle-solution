@@ -9,22 +9,18 @@
     "private": "true",
     "dependencies": {
         "aws-sdk": "*",
+        "fast-csv": "*",
         "moment": "*",
-        "underscore": "*",
         "node-uuid": "*",
-        "fast-csv": "*"
+        "underscore": "*"
     },
     "devDependencies": {
-        "grunt": "^0.4.5",
-        "grunt-aws-lambda": "^0.13.0",
-        "grunt-pack": "0.1.*",
-        "grunt-contrib-clean": "*",
-        "chai": "*",
-        "sinon": "*",
-        "sinon-chai": "*",
-        "mocha": "*",
         "aws-sdk-mock": "*",
-        "npm-run-all": "*"
+        "chai": "*",
+        "mocha": "*",
+        "npm-run-all": "*",
+        "sinon": "*",
+        "sinon-chai": "*"
     },
     "scripts": {
         "pretest": "npm install",
