@@ -2,7 +2,7 @@
     "name": "connected-car-sim-engine",
     "description": "The simulation engine for the connected car solutions",
     "main": "index.js",
-    "license": "Apache 2.0",
+    "license": "ASL",
     "version": "0.0.1",
     "private": "true",
     "dependencies": {

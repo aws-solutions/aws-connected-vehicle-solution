@@ -9,18 +9,18 @@
     "private": "true",
     "dependencies": {
         "aws-sdk": "*",
-        "moment": "*",
         "geolib": "*",
+        "moment": "*",
         "underscore": "*"
     },
     "devDependencies": {
-        "chai": "*",
-        "sinon": "*",
-        "sinon-chai": "*",
-        "mocha": "*",
         "aws-sdk-mock": "*",
+        "chai": "*",
+        "mocha": "*",
         "npm-run-all": "*",
-        "proxyquire": "*"
+        "proxyquire": "*",
+        "sinon": "*",
+        "sinon-chai": "*"
     },
     "scripts": {
         "pretest": "npm install",

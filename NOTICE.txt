@@ -17,3 +17,5 @@ Underscore.js under the Massachusetts Institute of Technology (MIT) license
 Moment.js under the Massachusetts Institute of Technology (MIT) license
 shortid under the Massachusetts Institute of Technology (MIT) license
 randomstring under the Massachusetts Institute of Technology (MIT) license
+
+The licenses for these third party components are included in LICENSE.txt
